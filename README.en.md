@@ -11,7 +11,7 @@ A lightweight and fully customizable **Windows hardware monitor** — track CPU,
 LiteMonitor is a modern **Windows desktop system monitoring tool**.  
 It supports horizontal/vertical display, multiple languages, theme switching, transparency, adaptive DPI scaling, and three-level color alerts — in a clean and highly configurable interface.
 
-![LiteMonitor Horizontal](./resources/screenshots/overview2.png)
+![LiteMonitor Horizontal](./resources/screenshots/overview1.png)
 ![LiteMonitor Main UI](./resources/screenshots/overview.png)
 
 ---

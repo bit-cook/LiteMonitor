@@ -9,7 +9,7 @@ A lightweight and customizable desktop hardware monitoring tool — real-time mo
 
 LiteMonitor 是一款基于 **Windows** 的现代化桌面系统监控工具。  
 支持横竖显示、多语言、主题切换、透明度显示、三级色值报警，界面简洁且高度可配置。
-![LiteMonitor 横条模式](./resources/screenshots/overview2.png)
+![LiteMonitor 横条模式](./resources/screenshots/overview1.png)
 
 ![LiteMonitor 主界面](./resources/screenshots/overview.png)
 
