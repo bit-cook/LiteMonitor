@@ -493,12 +493,12 @@ namespace LiteMonitor.ThemeEditor
                 {
                     Text = name,
                     Location = new Point((int)(10 * dpiScale), y + (int)(6 * dpiScale)),
-                    Width = (int)(250 * dpiScale) // 增加宽度以完整显示字段名称
+                    Width = (int)(200 * dpiScale) // 减少字段名宽度，整体左移
                 });
 
                 var warn = new NumericUpDown
                 {
-                    Location = new Point((int)(270 * dpiScale), y), // 调整位置以适应更宽的标签
+                    Location = new Point((int)(220 * dpiScale), y), // 整体左移，让布局更紧凑
                     Width = (int)(80 * dpiScale),
                     DecimalPlaces = 0,
                     Maximum = 9999,
@@ -509,7 +509,7 @@ namespace LiteMonitor.ThemeEditor
 
                 var crit = new NumericUpDown
                 {
-                    Location = new Point((int)(370 * dpiScale), y), // 调整位置以适应更宽的标签
+                    Location = new Point((int)(310 * dpiScale), y), // 整体左移，让输入框之间更紧凑
                     Width = (int)(80 * dpiScale),
                     DecimalPlaces = 0,
                     Maximum = 9999,
@@ -528,15 +528,15 @@ namespace LiteMonitor.ThemeEditor
             {
                 Text = "指标类型 / Metric Type",
                 Location = new Point((int)(10 * dpiScale), y + (int)(6 * dpiScale)),
-                Width = (int)(250 * dpiScale), // 增加宽度以完整显示字段名称
+                Width = (int)(200 * dpiScale), // 增加宽度以完整显示字段名称
                 Font = new Font("Microsoft YaHei UI", 10, FontStyle.Bold) // 字体自动 DPI 缩放
             });
 
             pageThreshold.Controls.Add(new Label
             {
                 Text = "警告 / Warn",
-                Location = new Point((int)(270 * dpiScale), y + 6), // 调整位置以适应更宽的标签
-                Width = (int)(90 * dpiScale),
+                Location = new Point((int)(210 * dpiScale), y + 6), // 调整位置以完整显示标签内容
+                Width = (int)(100 * dpiScale), // 增加宽度以完整显示标签内容
                 Font = new Font("Microsoft YaHei UI", 10, FontStyle.Bold),
                 TextAlign = ContentAlignment.MiddleCenter
             });
@@ -544,13 +544,13 @@ namespace LiteMonitor.ThemeEditor
             pageThreshold.Controls.Add(new Label
             {
                 Text = "严重 / Crit",
-                Location = new Point((int)(370 * dpiScale), y + 6), // 调整位置以适应更宽的标签
-                Width = (int)(80 * dpiScale),
+                Location = new Point((int)(300 * dpiScale), y + 6), // 调整位置与下方输入框对齐
+                Width = (int)(90 * dpiScale), // 增加宽度以完整显示标签内容
                 Font = new Font("Microsoft YaHei UI", 10, FontStyle.Bold),
                 TextAlign = ContentAlignment.MiddleCenter
             });
 
-            y += (int)(50 * dpiScale); // 增加垂直间距，应用DPI缩放
+            y += (int)(35 * dpiScale); // 增加垂直间距，应用DPI缩放
 
             AddPair("负载阈值 / Load (%)", () => T.Load.Warn, () => T.Load.Crit,
                 v => T.Load.Warn = v, v => T.Load.Crit = v);
@@ -576,20 +576,22 @@ namespace LiteMonitor.ThemeEditor
         // ============================================================
         private void AddSaveButton(Panel page)
         {
+            float dpiScale = GetDpiScale();
+            
             var btn = new Button
             {
                 Text = "保存主题 / Save Theme",
-                Width = 200,
-                Height = 40,
+                Width = (int)(200 * dpiScale),
+                Height = (int)(40 * dpiScale),
                 Anchor = AnchorStyles.Bottom | AnchorStyles.Left,
-                Location = new Point(10, 0) // 初始位置设为顶部，让Anchor属性自动处理到底部的定位
+                Location = new Point((int)(10 * dpiScale), 0) // 初始位置设为顶部，让Anchor属性自动处理到底部的定位
             };
 
             // 为了确保按钮在面板加载完成后正确定位到底部，添加Layout事件处理
             page.Layout += (sender, e) => {
                 if (page.Controls.Contains(btn))
                 {
-                    btn.Top = page.ClientSize.Height - 60;
+                    btn.Top = page.ClientSize.Height - (int)(80 * dpiScale); // 增加底部间距，应用DPI缩放
                 }
             };
 
