@@ -108,6 +108,7 @@ namespace LiteMonitor
 
                 // 更新菜单勾选状态
                 taskbarMode.Checked = cfg.ShowTaskbar;
+                form.RebuildMenus();
             };
 
             // 将任务栏模式加入显示模式分组
@@ -188,7 +189,7 @@ namespace LiteMonitor
             menu.Items.Add(new ToolStripSeparator());
 
 
-              // === 显示项 ===
+              // === 显示监控项 ===
             var grpShow = new ToolStripMenuItem(LanguageManager.T("Menu.ShowItems"));
             menu.Items.Add(grpShow);
 
@@ -367,6 +368,67 @@ namespace LiteMonitor
             moreRoot.DropDownItems.Add(thresholdItem);
             moreRoot.DropDownItems.Add(new ToolStripSeparator());
 
+            // ================= 任务栏设置 =================
+            string strTaskbar = LanguageManager.T("Menu.TaskbarSettings") ?? "任务栏设置";
+            var taskbarMenu = new ToolStripMenuItem(strTaskbar);
+
+            // 1. 简洁显示 (逻辑不变：修改字号)
+            bool isCompact = (Math.Abs(cfg.TaskbarFontSize - 9f) < 0.1f) && !cfg.TaskbarFontBold;
+            string strCompact = LanguageManager.T("Menu.TaskbarCompact") ?? "简洁显示 (9pt/细体)";
+            var itemCompact = new ToolStripMenuItem(strCompact)
+            {
+                Checked = isCompact,
+                CheckOnClick = true 
+            };
+            itemCompact.Click += (s, e) => {
+                if (itemCompact.Checked) {
+                    cfg.TaskbarFontSize = 9f;
+                    cfg.TaskbarFontBold = false;
+                } else {
+                    cfg.TaskbarFontSize = 10f;
+                    cfg.TaskbarFontBold = true;
+                }
+                cfg.Save();
+                ui?.ApplyTheme(cfg.Skin);
+            };
+            taskbarMenu.DropDownItems.Add(itemCompact);
+
+            // 2. 对齐方向 (仅 Win11 居中时显示)
+            if (TaskbarForm.IsCenterAligned())
+            {
+                taskbarMenu.DropDownItems.Add(new ToolStripSeparator());
+                
+                // ... (创建 居左/居右 菜单项的代码，保持不变) ...
+                // 核心：用户只需点“居左”，程序会自动算 GetWidgetsWidth 来避让
+                
+                string strAlign = LanguageManager.T("Menu.TaskbarAlign") ?? "对齐方向";
+                var itemAlign = new ToolStripMenuItem(strAlign);
+                string strRight = LanguageManager.T("Menu.TaskbarAlignRight") ?? "居右 (默认)";
+                string strLeft  = LanguageManager.T("Menu.TaskbarAlignLeft") ?? "居左 (开始菜单侧)";
+                var menuRight = new ToolStripMenuItem(strRight) { Checked = !cfg.TaskbarAlignLeft, CheckOnClick = true };
+                var menuLeft  = new ToolStripMenuItem(strLeft)  { Checked = cfg.TaskbarAlignLeft, CheckOnClick = true };
+
+                menuRight.Click += (s, e) => {
+                    cfg.TaskbarAlignLeft = false; cfg.Save();
+                    menuRight.Checked = true; menuLeft.Checked = false;
+                    ui?.ApplyTheme(cfg.Skin);
+                };
+                menuLeft.Click += (s, e) => {
+                    cfg.TaskbarAlignLeft = true; cfg.Save();
+                    menuRight.Checked = false; menuLeft.Checked = true;
+                    ui?.ApplyTheme(cfg.Skin);
+                };
+                itemAlign.DropDownItems.Add(menuRight);
+                itemAlign.DropDownItems.Add(menuLeft);
+                taskbarMenu.DropDownItems.Add(itemAlign);
+            }
+            else
+            {
+                if (cfg.TaskbarAlignLeft) { cfg.TaskbarAlignLeft = false; cfg.Save(); }
+            }
+            
+            moreRoot.DropDownItems.Insert(0, taskbarMenu);
+            moreRoot.DropDownItems.Add(new ToolStripSeparator());
             
             // === 高温报警 ===
             var alertItem = new ToolStripMenuItem(LanguageManager.T("Menu.AlertTemp") + " (>" + cfg.AlertTempThreshold + "°C)")

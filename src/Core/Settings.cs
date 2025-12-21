@@ -11,7 +11,7 @@ namespace LiteMonitor
         public string Skin { get; set; } = "DarkFlat_Classic";
         public bool TopMost { get; set; } = true;
         public bool AutoStart { get; set; } = false;
-        public int RefreshMs { get; set; } = 700; //刷新时间
+        public int RefreshMs { get; set; } = 1000; //刷新时间
         // ★ 新增字段
         public double AnimationSpeed { get; set; } = 0.35; // 平滑速度：0~1，0.3~0.5推荐
 
@@ -43,6 +43,8 @@ namespace LiteMonitor
         public string ScreenDevice { get; set; } = ""; // 手动指定屏幕设备，""=自动
 
         // ====== 任务栏字体设置（从主题硬编码迁移出来） ======
+        // 居左显示：默认关闭(居右)，开启后(居左) - 仅限 Win11 居中时有效
+        public bool TaskbarAlignLeft { get; set; } = true;
         public string TaskbarFontFamily { get; set; } = "Microsoft YaHei UI"; // 任务栏字体名称
         public float TaskbarFontSize { get; set; } = 10f; // 任务栏字体大小
         public bool TaskbarFontBold { get; set; } = true; // 任务栏字体是否加粗

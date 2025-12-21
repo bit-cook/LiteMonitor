@@ -89,6 +89,9 @@ namespace LiteMonitor
             // 背景色
             _form.BackColor = ThemeManager.ParseColor(t.Color.Background);
 
+            // 确保 Renderer 拿到的字体和 Settings 里的最新值一致
+            TaskbarRenderer.ReloadStyle(_cfg);
+
             // 重建竖屏布局对象
             _layout = new UILayout(t);
 

@@ -249,14 +249,15 @@ namespace LiteMonitor
             _taskbarHeight = Math.Max(24, _taskbarRect.Height);
         }
 
-        private bool IsCenterAligned()
+       // 1. 检测 Win11 是否居中 (现有的，供菜单使用)
+        public static bool IsCenterAligned()
         {
-            if (!_isWin11) return false;
+            if (Environment.OSVersion.Version.Major < 10 || Environment.OSVersion.Version.Build < 22000) 
+                return false;
             try
             {
                 using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced");
-                int v = (int)(key?.GetValue("TaskbarAl", 1) ?? 1);
-                return v == 1;
+                return ((int)(key?.GetValue("TaskbarAl", 1) ?? 1)) == 1;
             }
             catch { return false; }
         }
@@ -324,63 +325,80 @@ namespace LiteMonitor
             // ==========================
             //  Windows 10 News & Interests
             // ==========================
-            try
-            {
-                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
-                    @"Software\Microsoft\Windows\CurrentVersion\Feeds");
+            // try
+            // {
+            //     using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+            //         @"Software\Microsoft\Windows\CurrentVersion\Feeds");
 
-                if (key == null)
-                    return 0;
+            //     if (key == null)
+            //         return 0;
 
-                object? val = key.GetValue("ShellFeedsTaskbarViewMode");
-                if (val is not int mode)
-                    return 0;
+            //     object? val = key.GetValue("ShellFeedsTaskbarViewMode");
+            //     if (val is not int mode)
+            //         return 0;
 
-                return mode switch
-                {
-                    0 => 150,  // 文字 + 天气图标
-                    1 => 40,   // 小图标模式（只天气图标）
-                    2 => 0,    // 关闭
-                    _ => 0
-                };
-            }
-            catch
-            {
-                return 0;
-            }
+            //     return mode switch
+            //     {
+            //         0 => 150,  // 文字 + 天气图标
+            //         1 => 40,   // 小图标模式（只天气图标）
+            //         2 => 0,    // 关闭
+            //         _ => 0
+            //     };
+            // }
+            // catch
+            // {
+            //     return 0;
+            // }
+            return 0;
         }
 
 
+        // 2. 更新位置 (调用 GetWidgetsWidth)
         private void UpdatePlacement(int panelWidth)
         {
             if (_hTaskbar == IntPtr.Zero) return;
 
             var scr = Screen.PrimaryScreen;
             if (scr == null) return;
+            
             bool bottom = _taskbarRect.Bottom >= scr.Bounds.Bottom - 2;
-            bool centered = IsCenterAligned();
-            int widgetsWidth = GetWidgetsWidth();
+            GetWindowRect(_hTray, out RECT tray);
+
+            // 1. 获取当前系统状态
+            bool sysCentered = IsCenterAligned(); // 系统是否居中
+            bool alignLeft = _cfg.TaskbarAlignLeft && sysCentered; // 用户是否要在居中模式下强行居左
+
+            // 2. 智能计算右侧的“小组件避让宽度”
+            // 逻辑：如果系统是居中的，小组件在最左边，右边不需要避让，offset = 0
+            //       如果系统是居左的，小组件可能在托盘左边，右边需要避让，offset = GetWidgetsWidth()
+            int rightSideWidgetOffset = sysCentered ? 0 : GetWidgetsWidth();
+
             int leftScreen, topScreen;
 
-            if (bottom)
+            // Y轴计算 (保持不变)
+            if (bottom) topScreen = _taskbarRect.Bottom - _taskbarHeight;
+            else topScreen = _taskbarRect.Top;
+
+            // X轴计算
+            if (alignLeft)
             {
-                topScreen = _taskbarRect.Bottom - _taskbarHeight;
-                if (centered) leftScreen = _taskbarRect.Left + widgetsWidth + 6;
-                else
+                // === 用户强制居左 (仅 Win11 居中时有效) ===
+                // 基准：任务栏左边缘 + 6px
+                // 避让：如果开启了小组件，这里需要向右推 160px (因为居中模式下小组件在最左边)
+                int startX = _taskbarRect.Left + 6;
+                // 检测 Win11 小组件是否存在 (TaskbarDa 注册表检测逻辑，或者复用 GetWidgetsWidth > 0)
+                if (GetWidgetsWidth() > 0) 
                 {
-                    GetWindowRect(_hTray, out RECT tray);
-                    leftScreen = tray.left - widgetsWidth - panelWidth - 6;
+                    startX += GetWidgetsWidth(); // 或者是固定值 160
                 }
+                leftScreen = startX;
             }
             else
             {
-                topScreen = _taskbarRect.Top;
-                if (centered) leftScreen = _taskbarRect.Left + 6;
-                else
-                {
-                    GetWindowRect(_hTray, out RECT tray);
-                    leftScreen = tray.left - panelWidth - 6;
-                }
+                // === 居右模式 (默认) ===
+                // 基准：托盘左边缘 - 插件宽 - 6px
+                // 避让：应用上面计算的 rightSideWidgetOffset
+                leftScreen = tray.left - panelWidth - 6 - rightSideWidgetOffset;
             }
 
             POINT pt = new POINT { X = leftScreen, Y = topScreen };
