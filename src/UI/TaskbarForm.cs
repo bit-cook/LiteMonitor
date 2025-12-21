@@ -1,6 +1,5 @@
 using Microsoft.Win32;
 using System.Runtime.InteropServices;
-// 需要新增 using
 using LiteMonitor.src.Core;
 
 namespace LiteMonitor
@@ -12,6 +11,7 @@ namespace LiteMonitor
         private readonly UIController _ui;
         private readonly System.Windows.Forms.Timer _timer = new();
 
+        // 1. 去掉 readonly，允许 ReloadLayout 重新赋值 (保留你的修改)
         private HorizontalLayout _layout;
 
         private IntPtr _hTaskbar = IntPtr.Zero;
@@ -29,19 +29,26 @@ namespace LiteMonitor
         private System.Collections.Generic.List<Column>? _cols;
         // 1. 添加字段
         private readonly MainForm _mainForm;
+
+        // ★★★ 新增：WndProc 消息常量 ★★★
+        private const int WM_RBUTTONUP = 0x0205;
+
+        // 公开方法：重新加载布局 (保留你的修改)
         public void ReloadLayout()
         {
             // 重新创建一个布局器，它内部会自动读取最新的 Settings 文件
             _layout = new HorizontalLayout(ThemeManager.Current, 300, LayoutMode.Taskbar);
         }
+
         public TaskbarForm(Settings cfg, UIController ui, MainForm mainForm)
         {
             _cfg = cfg;
             _ui = ui;
             // 2. 初始化 MainForm 引用
             _mainForm = mainForm;
+            
             // 初始化：LayoutMode.Taskbar
-            ReloadLayout();// 初始化布局器，读取最新的 Settings 文件
+            ReloadLayout(); // 初始化布局器，读取最新的 Settings 文件
 
             _isWin11 = Environment.OSVersion.Version >= new Version(10, 0, 22000);
 
@@ -71,8 +78,6 @@ namespace LiteMonitor
             _timer.Start();
 
             Tick();
-
-
         }
 
         protected override void Dispose(bool disposing)
@@ -83,6 +88,75 @@ namespace LiteMonitor
                 _timer.Dispose();
             }
             base.Dispose(disposing);
+        }
+
+        // ====================================================================================
+        // ★★★ 核心修复：WndProc 仅针对 Win10 拦截 ★★★
+        // ====================================================================================
+        protected override void WndProc(ref Message m)
+        {
+            // 仅在 Win10 下拦截右键抬起 (解决 Win10 任务栏卡死问题)
+            if (!_isWin11 && m.Msg == WM_RBUTTONUP)
+            {
+                // Win10 必须使用异步 (BeginInvoke) 来防止死锁
+                this.BeginInvoke(new Action(ShowContextMenu));
+
+                // ★ 关键：拦截消息，不调用 base.WndProc
+                // 这样 Win10 系统任务栏就收不到这个右键，不会弹出系统菜单
+                return; 
+            }
+
+            // Win11 或其他消息：不做任何拦截，走原生流程
+            // 这样会正常触发后面的 OnMouseUp，保证 Win11 行为与你原始代码完全一致
+            base.WndProc(ref m);
+        }
+
+        // 提取出来的显示菜单逻辑 (供 Win10 异步调用 和 Win11 OnMouseUp 调用)
+        private void ShowContextMenu()
+        {
+            // 1. 构建菜单 (复用 MenuManager)
+            var menu = MenuManager.Build(_mainForm, _cfg, _ui);
+
+            // 2. ★★★ 核心修复：强制让 TaskbarForm 获取前台焦点 ★★★
+            // 严格保留你原始代码的写法：使用 this.Handle
+            // 确保菜单弹出后立即激活，不需要点第二次
+            SetForegroundWindow(this.Handle);
+
+            // 3. 显示菜单
+            menu.Show(Cursor.Position);
+        }
+
+        // ====================================================================================
+        // 原生事件处理 (Win11 走这里，保持完美体验)
+        // ====================================================================================
+        
+        // 添加鼠标右键点击事件
+        protected override void OnMouseUp(MouseEventArgs e)
+        {
+            base.OnMouseUp(e);
+
+            if (e.Button == MouseButtons.Right)
+            {
+                // Win10 的右键已经被 WndProc 拦截了，不会进到这里
+                // 所以这里只有 Win11 会执行，完全复刻你的原始逻辑
+                ShowContextMenu();
+            }
+        }
+
+        // 添加鼠标左键双击事件 (保持不变)
+        protected override void OnMouseDoubleClick(MouseEventArgs e)
+        {
+            base.OnMouseDoubleClick(e);
+
+            // 只响应左键双击
+            if (e.Button == MouseButtons.Left)
+            {
+                // ★ 改为：显示 / 隐藏 主窗口自动切换
+                if (_mainForm.Visible)
+                    _mainForm.HideMainWindow();
+                else
+                    _mainForm.ShowMainWindow();
+            }
         }
 
         // -------------------------------------------------------------
@@ -323,33 +397,6 @@ namespace LiteMonitor
                 return 0;
             }
 
-            // ==========================
-            //  Windows 10 News & Interests
-            // ==========================
-            // try
-            // {
-            //     using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
-            //         @"Software\Microsoft\Windows\CurrentVersion\Feeds");
-
-            //     if (key == null)
-            //         return 0;
-
-            //     object? val = key.GetValue("ShellFeedsTaskbarViewMode");
-            //     if (val is not int mode)
-            //         return 0;
-
-            //     return mode switch
-            //     {
-            //         0 => 150,  // 文字 + 天气图标
-            //         1 => 40,   // 小图标模式（只天气图标）
-            //         2 => 0,    // 关闭
-            //         _ => 0
-            //     };
-            // }
-            // catch
-            // {
-            //     return 0;
-            // }
             return 0;
         }
 
@@ -431,39 +478,6 @@ namespace LiteMonitor
             TaskbarRenderer.Render(g, _cols, _lastIsLightTheme);
 
         }
-        // 添加鼠标右键点击事件
-        protected override void OnMouseUp(MouseEventArgs e)
-        {
-            base.OnMouseUp(e);
-
-            if (e.Button == MouseButtons.Right)
-            {
-                // 1. 构建菜单 (复用 MenuManager)
-                var menu = MenuManager.Build(_mainForm, _cfg, _ui);
-
-                // 2. ★★★ 核心修复：强制让 TaskbarForm 获取前台焦点 ★★★
-                // 如果不加这句，菜单弹出后会处于“后台”状态，需要点击才能激活
-                SetForegroundWindow(this.Handle);
-
-                // 3. 显示菜单
-                menu.Show(Cursor.Position);
-            }
-        }
-        // 添加鼠标左键双击事件
-        protected override void OnMouseDoubleClick(MouseEventArgs e)
-        {
-            base.OnMouseDoubleClick(e);
-
-            // 只响应左键双击
-            if (e.Button == MouseButtons.Left)
-            {
-                // ★ 改为：显示 / 隐藏 主窗口自动切换
-                if (_mainForm.Visible)
-                    _mainForm.HideMainWindow();
-                else
-                    _mainForm.ShowMainWindow();
-            }
-        }
 
         protected override CreateParams CreateParams
         {
@@ -484,5 +498,3 @@ namespace LiteMonitor
 
 
 }
-
-

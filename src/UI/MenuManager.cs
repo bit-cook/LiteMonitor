@@ -369,12 +369,12 @@ namespace LiteMonitor
             moreRoot.DropDownItems.Add(new ToolStripSeparator());
 
             // ================= 任务栏设置 =================
-            string strTaskbar = LanguageManager.T("Menu.TaskbarSettings") ?? "任务栏设置";
+            string strTaskbar = LanguageManager.T("Menu.TaskbarSettings");
             var taskbarMenu = new ToolStripMenuItem(strTaskbar);
 
             // 1. 简洁显示 (逻辑不变：修改字号)
             bool isCompact = (Math.Abs(cfg.TaskbarFontSize - 9f) < 0.1f) && !cfg.TaskbarFontBold;
-            string strCompact = LanguageManager.T("Menu.TaskbarCompact") ?? "简洁显示 (9pt/细体)";
+            string strCompact = LanguageManager.T("Menu.TaskbarCompact");
             var itemCompact = new ToolStripMenuItem(strCompact)
             {
                 Checked = isCompact,
@@ -411,10 +411,10 @@ namespace LiteMonitor
                 // ... (创建 居左/居右 菜单项的代码，保持不变) ...
                 // 核心：用户只需点“居左”，程序会自动算 GetWidgetsWidth 来避让
                 
-                string strAlign = LanguageManager.T("Menu.TaskbarAlign") ?? "对齐方向";
+                string strAlign = LanguageManager.T("Menu.TaskbarAlign");
                 var itemAlign = new ToolStripMenuItem(strAlign);
-                string strRight = LanguageManager.T("Menu.TaskbarAlignRight") ?? "居右 (默认)";
-                string strLeft  = LanguageManager.T("Menu.TaskbarAlignLeft") ?? "居左 (开始菜单侧)";
+                string strRight = LanguageManager.T("Menu.TaskbarAlignRight");
+                string strLeft  = LanguageManager.T("Menu.TaskbarAlignLeft");
                 var menuRight = new ToolStripMenuItem(strRight) { Checked = !cfg.TaskbarAlignLeft, CheckOnClick = true };
                 var menuLeft  = new ToolStripMenuItem(strLeft)  { Checked = cfg.TaskbarAlignLeft, CheckOnClick = true };
 
