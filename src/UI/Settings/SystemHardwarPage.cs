@@ -1,7 +1,3 @@
-using System;
-using System.Drawing;
-using System.IO;
-using System.Windows.Forms;
 using LiteMonitor.src.Core;
 using LiteMonitor.src.SystemServices;
 using LiteMonitor.src.UI.Controls;
@@ -11,31 +7,30 @@ namespace LiteMonitor.src.UI.SettingsPage
     public class SystemHardwarPage : SettingsPageBase
     {
         private Panel _container;
-        private bool _isLoaded = false; 
-        private string _originalLanguage; 
+        private bool _isLoaded = false;
+        private string _originalLanguage;
 
         public SystemHardwarPage()
         {
             this.BackColor = UIColors.MainBg;
             this.Dock = DockStyle.Fill;
             this.Padding = new Padding(0);
-            _container = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(20) };
+            _container = new BufferedPanel { Dock = DockStyle.Fill, AutoScroll = true, Padding = new Padding(20) }; 
             this.Controls.Add(_container);
         }
-    
+
         public override void OnShow()
         {
-            base.OnShow(); // 1. 刷新数据 (从Config读取最新值)
+            base.OnShow();
             if (Config == null || _isLoaded) return;
-            
+
             _container.SuspendLayout();
             _container.Controls.Clear();
-            
-            _originalLanguage = Config.Language; // 记录初始语言
+            _originalLanguage = Config.Language;
 
-            CreateSystemCard();   
+            CreateSystemCard();
             CreateCalibrationCard();
-            CreateSourceCard();   
+            CreateSourceCard();
 
             _container.ResumeLayout();
             _isLoaded = true;
@@ -44,35 +39,34 @@ namespace LiteMonitor.src.UI.SettingsPage
         private void CreateSystemCard()
         {
             var group = new LiteSettingsGroup(LanguageManager.T("Menu.SystemSettings"));
-            
-            // 1. 语言选择
-            var cmbLang = new LiteComboBox();
+
+           // 1. 语言选择 (清理了 Auto 逻辑)
+            var langs = new System.Collections.Generic.List<string>();
             string langDir = Path.Combine(AppContext.BaseDirectory, "resources/lang");
-            if (Directory.Exists(langDir)) {
-                foreach (var file in Directory.EnumerateFiles(langDir, "*.json")) {
-                    string code = Path.GetFileNameWithoutExtension(file);
-                    cmbLang.Items.Add(code.ToUpper());
-                }
+            if (Directory.Exists(langDir))
+            {
+                // 获取所有真实存在的语言文件 (如 EN, ZH, JA)
+                langs.AddRange(Directory.EnumerateFiles(langDir, "*.json")
+                    .Select(f => Path.GetFileNameWithoutExtension(f).ToUpper()));
             }
-            BindCombo(cmbLang, 
-                () => string.IsNullOrEmpty(Config.Language) ? "EN" : Config.Language.ToUpper(),
-                v => Config.Language = (v == "AUTO") ? "" : v.ToLower());
-                
-            group.AddItem(new LiteSettingsItem(LanguageManager.T("Menu.Language"), cmbLang));
+            
+            AddCombo(group, "Menu.Language", langs,
+                // Getter: 如果 Config 为空(首次运行), 显示当前实际生效的语言; 否则显示配置值
+                () => string.IsNullOrEmpty(Config.Language) 
+                        ? LanguageManager.CurrentLang.ToUpper() 
+                        : Config.Language.ToUpper(),
+                v => Config.Language = v.ToLower()
+            );
 
             // 2. 开机自启
-            var chkAutoStart = new LiteCheck(false, LanguageManager.T("Menu.Enable"));
-            BindCheck(chkAutoStart, () => Config.AutoStart, v => Config.AutoStart = v);
-            group.AddItem(new LiteSettingsItem(LanguageManager.T("Menu.AutoStart"), chkAutoStart));
+            AddBool(group, "Menu.AutoStart", () => Config.AutoStart, v => Config.AutoStart = v);
 
-            // 3. 隐藏托盘图标
-            var chkHideTray = new LiteCheck(false, LanguageManager.T("Menu.Enable"));
-            BindCheck(chkHideTray, 
+            // 3. 隐藏托盘 (带联动逻辑)
+            AddBool(group, "Menu.HideTrayIcon", 
                 () => Config.HideTrayIcon, 
-                v => Config.HideTrayIcon = v);
-                
-            chkHideTray.CheckedChanged += (s, e) => EnsureSafeVisibility(null, chkHideTray, null);
-            group.AddItem(new LiteSettingsItem(LanguageManager.T("Menu.HideTrayIcon"), chkHideTray));
+                v => Config.HideTrayIcon = v,
+                chk => chk.CheckedChanged += (s, e) => EnsureSafeVisibility(null, chk, null)
+            );
 
             AddGroupToPage(group);
         }
@@ -82,28 +76,32 @@ namespace LiteMonitor.src.UI.SettingsPage
             var group = new LiteSettingsGroup(LanguageManager.T("Menu.Calibration"));
             string suffix = " (" + LanguageManager.T("Menu.MaxLimits") + ")";
 
-            void AddCalibItem(string title, string unit, Func<float> get, Action<float> set)
+            // 辅助闭包：拼接标题
+            void AddCalib(string key, string unit, Func<float> get, Action<float> set)
             {
-                // ★★★ 修改开始：使用 LiteNumberInput ★★★
-                // 宽度 60，无前缀，无特殊颜色(默认灰色)
-                var input = new LiteNumberInput("0", unit, "", 60);
-                // ★★★ 修改结束 ★★★
+                // 使用工厂方法 AddNumberDouble
+                // 注意：Settings item 的 titleKey 机制是取翻译，这里我们手动拼接了 suffix
+                // 所以我们稍微绕过工厂的 titleKey 翻译，或者直接传拼接好的 string 作为一个假 key (因为 LanguageManager 如果找不到 key 会返回 key 本身)
+                // 但更优雅的方式是修改工厂方法支持 rawTitle，这里暂且用 key 拼接方式
                 
-                BindDouble(input, () => get(), v => set((float)v)); 
-                group.AddItem(new LiteSettingsItem(title + suffix, input));
+                // 为了复用工厂，我们直接在外部创建 LiteSettingsItem 也可以，但这里我们用一点小技巧：
+                // 如果 LanguageManager.T 找不到 key，它会返回 key 原文。
+                string title = LanguageManager.T(key) + suffix; 
+                
+                var input = AddNumberDouble(group, "RAW_TITLE_HACK", unit, 
+                    () => get(), 
+                    v => set((float)v)
+                );
+                
+                // 修正 Label 的文字 (因为工厂里把它当 Key 去翻译了)
+                // 实际上我们可以在工厂里加个重载，但为了不改太多，这里手动修正一下 Parent 的 Label
+                if(input.Parent.Controls[0] is Label lbl) lbl.Text = title;
             }
 
-            AddCalibItem(LanguageManager.T("Items.CPU.Power"), "W", 
-                () => Config.RecordedMaxCpuPower, v => Config.RecordedMaxCpuPower = v);
-
-            AddCalibItem(LanguageManager.T("Items.CPU.Clock"), "MHz", 
-                () => Config.RecordedMaxCpuClock, v => Config.RecordedMaxCpuClock = v);
-
-            AddCalibItem(LanguageManager.T("Items.GPU.Power"), "W", 
-                () => Config.RecordedMaxGpuPower, v => Config.RecordedMaxGpuPower = v);
-
-            AddCalibItem(LanguageManager.T("Items.GPU.Clock"), "MHz", 
-                () => Config.RecordedMaxGpuClock, v => Config.RecordedMaxGpuClock = v);
+            AddCalib("Items.CPU.Power", "W",   () => Config.RecordedMaxCpuPower, v => Config.RecordedMaxCpuPower = v);
+            AddCalib("Items.CPU.Clock", "MHz", () => Config.RecordedMaxCpuClock, v => Config.RecordedMaxCpuClock = v);
+            AddCalib("Items.GPU.Power", "W",   () => Config.RecordedMaxGpuPower, v => Config.RecordedMaxGpuPower = v);
+            AddCalib("Items.GPU.Clock", "MHz", () => Config.RecordedMaxGpuClock, v => Config.RecordedMaxGpuClock = v);
 
             group.AddFullItem(new LiteNote(LanguageManager.T("Menu.CalibrationTip"), 0));
             AddGroupToPage(group);
@@ -112,43 +110,34 @@ namespace LiteMonitor.src.UI.SettingsPage
         private void CreateSourceCard()
         {
             var group = new LiteSettingsGroup(LanguageManager.T("Menu.HardwareSettings"));
-            string strAuto = LanguageManager.T("Menu.Auto"); 
+            string strAuto = LanguageManager.T("Menu.Auto");
 
             // 1. 磁盘源
-            var cmbDisk = new LiteComboBox();
-            cmbDisk.Items.Add(strAuto); 
-            foreach (var d in HardwareMonitor.ListAllDisks()) cmbDisk.Items.Add(d);
-            
-            BindCombo(cmbDisk, 
+            var disks = HardwareMonitor.ListAllDisks();
+            disks.Insert(0, strAuto);
+            AddCombo(group, "Menu.DiskSource", disks,
                 () => string.IsNullOrEmpty(Config.PreferredDisk) ? strAuto : Config.PreferredDisk,
-                v => Config.PreferredDisk = (v == strAuto) ? "" : v);
-            
-            group.AddItem(new LiteSettingsItem(LanguageManager.T("Menu.DiskSource"), cmbDisk));
+                v => Config.PreferredDisk = (v == strAuto) ? "" : v
+            );
 
             // 2. 网络源
-            var cmbNet = new LiteComboBox();
-            cmbNet.Items.Add(strAuto);
-            foreach (var n in HardwareMonitor.ListAllNetworks()) cmbNet.Items.Add(n);
-            
-            BindCombo(cmbNet, 
+            var nets = HardwareMonitor.ListAllNetworks();
+            nets.Insert(0, strAuto);
+            AddCombo(group, "Menu.NetworkSource", nets,
                 () => string.IsNullOrEmpty(Config.PreferredNetwork) ? strAuto : Config.PreferredNetwork,
-                v => Config.PreferredNetwork = (v == strAuto) ? "" : v);
-
-            group.AddItem(new LiteSettingsItem(LanguageManager.T("Menu.NetworkSource"), cmbNet));
+                v => Config.PreferredNetwork = (v == strAuto) ? "" : v
+            );
 
             // 3. 刷新率
-            var cmbRefresh = new LiteComboBox();
             int[] rates = { 100, 200, 300, 500, 600, 700, 800, 1000, 1500, 2000, 3000 };
-            foreach (var r in rates) cmbRefresh.Items.Add(r + " ms");
-            
-            BindCombo(cmbRefresh,
+            AddCombo(group, "Menu.Refresh", rates.Select(r => r + " ms"),
                 () => Config.RefreshMs + " ms",
                 v => {
                     int val = UIUtils.ParseInt(v);
                     Config.RefreshMs = val < 50 ? 1000 : val;
-                });
+                }
+            );
 
-            group.AddItem(new LiteSettingsItem(LanguageManager.T("Menu.Refresh"), cmbRefresh));
             AddGroupToPage(group);
         }
 
@@ -158,32 +147,6 @@ namespace LiteMonitor.src.UI.SettingsPage
             wrapper.Controls.Add(group);
             _container.Controls.Add(wrapper);
             _container.Controls.SetChildIndex(wrapper, 0);
-        }
-
-        public override void Save()
-        {
-            if (!_isLoaded) return;
-            // 1. 执行基类保存 (将 UI 值写入 Config 对象)
-            base.Save(); 
-
-            // 2. 应用语言变更 (如果变了)
-            // ★ 必须最先执行！因为语言改变可能触发完全的重绘
-            if (_originalLanguage != Config.Language) {
-                AppActions.ApplyLanguage(Config, this.UI, this.MainForm);
-                _originalLanguage = Config.Language; 
-            }
-
-            // 3. 应用开机自启和可见性
-            AppActions.ApplyAutoStart(Config);
-            AppActions.ApplyVisibility(Config, this.MainForm);
-            
-            // 4. 应用硬件源变更 (磁盘/网络选择)
-            AppActions.ApplyMonitorLayout(this.UI, this.MainForm);
-
-            // 5. ★★★ 核心修复：应用刷新率 ★★★
-            // 刷新率 (RefreshMs) 属于 ThemeAndLayout 的管辖范围 (负责重启 Timer)
-            // 必须显式调用它，否则刷新率不会立即生效！
-            AppActions.ApplyThemeAndLayout(Config, this.UI, this.MainForm);
         }
     }
 }

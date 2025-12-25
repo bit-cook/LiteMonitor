@@ -38,6 +38,7 @@ namespace LiteMonitor.src.UI
             // === 1. 侧边栏 ===
             var pnlSidebar = new Panel { Dock = DockStyle.Left, Width = 160, BackColor = UIColors.SidebarBg };
             
+            
             _pnlNavContainer = new FlowLayoutPanel 
             { 
                 Dock = DockStyle.Fill, 
@@ -75,7 +76,7 @@ namespace LiteMonitor.src.UI
             this.Controls.Add(pnlBottom);
 
             // === 3. 内容区 ===
-            _pnlContent = new Panel { Dock = DockStyle.Fill, Padding = new Padding(0) };
+            _pnlContent = new BufferedPanel { Dock = DockStyle.Fill, Padding = new Padding(0) };
             this.Controls.Add(_pnlContent);
             
             pnlSidebar.BringToFront(); 
@@ -136,25 +137,50 @@ namespace LiteMonitor.src.UI
             // 更新内容
             if (_pages.ContainsKey(key))
             {
-                _pnlContent.Controls.Clear();
-                _currentPage = _pages[key];
-                _currentPage.OnShow();
-                _pnlContent.Controls.Add(_currentPage);
+                // ★★★ 核心修复开始 ★★★
+                
+                // 1. 挂起父容器布局：告诉系统“在我操作完之前，千万不要重绘”
+                _pnlContent.SuspendLayout(); 
+                
+                try 
+                {
+                    _pnlContent.Controls.Clear();
+                    _currentPage = _pages[key];
+                    
+                    // 2. 关键技：手动预设尺寸
+                    // 在 Dock 生效前，先强制把它设为和父容器一样大。
+                    // 这样即使 Layout 有微小延迟，肉眼看到的也是填满的状态。
+                    _currentPage.Size = _pnlContent.ClientSize; 
+                    _currentPage.Dock = DockStyle.Fill; // 双保险
+
+                    _currentPage.OnShow();
+                    _pnlContent.Controls.Add(_currentPage);
+                }
+                finally
+                {
+                    // 3. 恢复布局：此时控件大小已正确，系统一次性绘制最终画面
+                    _pnlContent.ResumeLayout(); 
+                }
+                // ★★★ 核心修复结束 ★★★
             }
         }
 
         // ★★★ 极致瘦身后的 ApplySettings ★★★
         private void ApplySettings()
         {
-            // 1. 让每个页面自己保存并执行 AppActions
-            //    (MonitorPage 会刷新布局，GeneralPage 会刷新语言等)
+            // 1. 【保存阶段】让所有页面把 UI 数据写回 Config 对象
+            // (SettingsPageBase.Save 会自动执行所有 Bind 的 setter)
             foreach (var page in _pages.Values) 
             {
-                page.Save();
+                page.Save(); 
             }
             
-            // 2. 将最终的 Config 写入磁盘
+            // 2. 【持久化阶段】写入 JSON 文件
             _cfg.Save();
+
+            // 3. 【应用阶段】统一触发全局刷新
+            // 此时 Config 对象已是最新，AppActions 读取它并生效
+            AppActions.ApplyAllSettings(_cfg, _mainForm, _ui);
         }
     }
 }

@@ -21,7 +21,7 @@ namespace LiteMonitor.src.UI.SettingsPage
 
             InitHeader();
 
-            _container = new Panel
+            _container = new BufferedPanel
             {
                 Dock = DockStyle.Fill,
                 AutoScroll = true,
@@ -160,7 +160,6 @@ namespace LiteMonitor.src.UI.SettingsPage
 
             Config.MonitorItems = flatList;
             Config.SyncToLanguage();
-            AppActions.ApplyMonitorLayout(UI, MainForm);
         }
 
         // 内部封装类保持不变

@@ -1,7 +1,4 @@
-using System;
-using System.Collections.Generic;
-using System.Windows.Forms;
-using System.Drawing;
+using System.Reflection; // 引用反射命名空间
 using LiteMonitor.src.Core;
 using LiteMonitor.src.UI.Controls;
 
@@ -30,6 +27,7 @@ namespace LiteMonitor.src.UI.SettingsPage
         {
             this.BackColor = GlobalBackColor; 
             this.Dock = DockStyle.Fill;
+            this.DoubleBuffered = true;
         }
 
         public void SetContext(Settings cfg, MainForm form, UIController ui)
@@ -38,6 +36,81 @@ namespace LiteMonitor.src.UI.SettingsPage
             MainForm = form;
             UI = ui;
         }
+
+        // =============================================================
+        //  UI 工厂方法 (Factory Methods)
+        // =============================================================
+
+        /// <summary>
+        /// 快速添加：开关 (CheckBox)
+        /// </summary>
+        protected LiteCheck AddBool(LiteSettingsGroup group, string titleKey, Func<bool> get, Action<bool> set, Action<LiteCheck> onCreated = null)
+        {
+            var chk = new LiteCheck(false, LanguageManager.T("Menu.Enable"));
+            BindCheck(chk, get, set);
+            onCreated?.Invoke(chk);
+            group.AddItem(new LiteSettingsItem(LanguageManager.T(titleKey), chk));
+            return chk;
+        }
+
+        /// <summary>
+        /// 快速添加：下拉框 (ComboBox) - 字符串列表
+        /// </summary>
+        protected LiteComboBox AddCombo(LiteSettingsGroup group, string titleKey, IEnumerable<string> items, Func<string> get, Action<string> set)
+        {
+            var cmb = new LiteComboBox();
+            foreach (var i in items) cmb.Items.Add(i);
+            BindCombo(cmb, get, set);
+            group.AddItem(new LiteSettingsItem(LanguageManager.T(titleKey), cmb));
+            return cmb;
+        }
+
+        /// <summary>
+        /// 快速添加：下拉框 (ComboBox) - 索引绑定
+        /// </summary>
+        protected LiteComboBox AddComboIndex(LiteSettingsGroup group, string titleKey, IEnumerable<string> items, Func<int> get, Action<int> set)
+        {
+            var cmb = new LiteComboBox();
+            foreach (var i in items) cmb.Items.Add(i);
+            BindComboIndex(cmb, get, set);
+            group.AddItem(new LiteSettingsItem(LanguageManager.T(titleKey), cmb));
+            return cmb;
+        }
+
+        /// <summary>
+        /// 快速添加：数字输入 (Int)
+        /// </summary>
+        protected LiteNumberInput AddNumberInt(LiteSettingsGroup group, string titleKey, string unit, Func<int> get, Action<int> set, int width = 60, Color? color = null)
+        {
+            var input = new LiteNumberInput("0", unit, "", width, color);
+            BindInt(input, get, set);
+            group.AddItem(new LiteSettingsItem(LanguageManager.T(titleKey), input));
+            return input;
+        }
+
+        /// <summary>
+        /// 快速添加：数字输入 (Double/Float)
+        /// </summary>
+        protected LiteNumberInput AddNumberDouble(LiteSettingsGroup group, string titleKey, string unit, Func<double> get, Action<double> set, int width = 60)
+        {
+            var input = new LiteNumberInput("0", unit, "", width);
+            BindDouble(input, get, set);
+            group.AddItem(new LiteSettingsItem(LanguageManager.T(titleKey), input));
+            return input;
+        }
+
+        /// <summary>
+        /// 快速添加：颜色选择器
+        /// </summary>
+        protected LiteColorInput AddColor(LiteSettingsGroup group, string titleKey, Func<string> get, Action<string> set, bool enabled = true)
+        {
+            var input = new LiteColorInput(get());
+            input.Enabled = enabled;
+            BindColor(input, get, set);
+            group.AddItem(new LiteSettingsItem(LanguageManager.T(titleKey), input));
+            return input;
+        }
+
 
         // =============================================================
         //  强力绑定 2.0：同时注册“加载”和“保存”逻辑

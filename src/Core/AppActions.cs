@@ -13,6 +13,31 @@ namespace LiteMonitor.src.Core
     /// </summary>
     public static class AppActions
     {
+
+        // ★★★ 新增：全局应用入口 ★★★
+        public static void ApplyAllSettings(Settings cfg, MainForm mainForm, UIController ui)
+        {
+            // 1. 语言变更 (如果有)
+            // 建议：LanguageManager 内部判断如果语言没变则跳过加载，这里直接调
+            ApplyLanguage(cfg, ui, mainForm); 
+
+            // 2. 系统级设置
+            ApplyAutoStart(cfg); // 原 SystemHardwarPage 的逻辑
+            ApplyWindowAttributes(cfg, mainForm); // 基础窗口属性
+
+            // 3. 界面布局与主题
+            // 这会处理 RefreshMs(Timer重启)、透明度、尺寸、皮肤
+            ApplyThemeAndLayout(cfg, ui, mainForm); 
+            
+            // 4. 子模块特定设置
+            ApplyMonitorLayout(ui, mainForm); // 监控项、硬件源变更
+            ApplyTaskbarStyle(cfg, ui);       // 任务栏样式
+
+            // 5. 可见性 (最后执行，避免闪烁)
+            ApplyVisibility(cfg, mainForm);
+        }
+
+        
         // =============================================================
         // 1. 核心系统动作 (语言、开机自启)
         // =============================================================

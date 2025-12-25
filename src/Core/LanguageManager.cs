@@ -25,6 +25,13 @@ namespace LiteMonitor.src.Core
 
         public static void Load(string langCode)
         {
+            // [优化] 如果请求的语言与当前已加载语言一致，且字典不为空，则跳过加载
+            // 使用 OrdinalIgnoreCase 忽略大小写差异 (如 "zh" vs "ZH")
+            if (string.Equals(CurrentLang, langCode, StringComparison.OrdinalIgnoreCase) && _texts.Count > 0) 
+            {
+                return; 
+            }
+
             try
             {
                 var path = Path.Combine(LangDir, $"{langCode}.json");

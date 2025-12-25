@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Reflection; // 用于给 DataGridView 开缓冲
 using LiteMonitor.src.Core;
 
 namespace LiteMonitor
@@ -39,6 +40,8 @@ namespace LiteMonitor
         public TrafficHistoryForm(Settings cfg)
         {
             _cfg = cfg;
+            // 【修改点 1】开启窗体自身的双缓冲（解决背景白屏）
+            this.DoubleBuffered = true;
 
             using (Graphics g = this.CreateGraphics())
             {
@@ -53,7 +56,11 @@ namespace LiteMonitor
             this.ForeColor = C_TextMain;
             this.Font = new Font("Microsoft YaHei UI", 9F);
 
+            // 【修改点 2】在 InitializeUI 前后加上挂起和恢复布局
+            // 这会让系统知道：“我还没摆好控件，先别画，等我摆完了再一次性画出来”
+            this.SuspendLayout(); 
             InitializeUI();
+            this.ResumeLayout(true); // 参数 true 也就是立即执行布局逻辑
 
             SwitchView(HistoryViewMode.Daily);
             UpdateRealtimeStats();
