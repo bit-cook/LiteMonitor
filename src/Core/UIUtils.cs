@@ -1,8 +1,8 @@
 ﻿using System.Drawing.Drawing2D;
-
 using System.Text.RegularExpressions;
 
 namespace LiteMonitor.src.Core
+
 {
     /// <summary>
     /// LiteMonitor 的公共 UI 工具库（所有渲染器可用）
@@ -48,8 +48,40 @@ namespace LiteMonitor.src.Core
             string k = key.ToUpperInvariant();
             float v = raw ?? 0.0f;
 
-            // 1. 百分比类 (Load / Mem / Vram)
-            if (k.Contains("LOAD") || k.Contains("VRAM") || k.Contains("MEM")) 
+            // 1. 内存/显存特殊显示逻辑 (必须放在第一位)
+            if (k.Contains("MEM") || k.Contains("VRAM"))
+            {
+                // 1. 读取配置
+                var cfg = Settings.Load();
+                
+                // 2. 判断模式：如果是 1 (已用容量)
+                if (cfg.MemoryDisplayMode == 1) 
+                {
+                    double totalGB = 0;
+                    // 获取对应的总容量 (从 Settings 静态变量)
+                    if (k.Contains("MEM")) totalGB = Settings.DetectedRamTotalGB;
+                    else if (k.Contains("VRAM")) totalGB = Settings.DetectedGpuVramTotalGB;
+
+                    // 只有当探测到了有效容量时，才进行转换
+                    if (totalGB > 0)
+                    {
+                        // 计算：(百分比 / 100) * 总GB = 已用GB
+                        double usedGB = (v / 100.0) * totalGB;
+                        
+                        // 转成 Bytes 喂给 FormatDataSize
+                        double usedBytes = usedGB * 1024.0 * 1024.0 * 1024.0;
+                        
+                        // 这里的 1 表示强制保留 1 位小数 (如 12.5GB)
+                        return FormatDataSize(usedBytes, "", 1); 
+                    }
+                }
+                
+                // 模式为 0 (百分比)，或者还没探测到总容量 -> 回落显示百分比
+                return $"{v:0.0}%";
+            }
+
+             // 2. 百分比类 (Load)
+            if (k.Contains("LOAD")) 
                 return $"{v:0.0}%";
 
             // 2. 温度类
@@ -81,8 +113,12 @@ namespace LiteMonitor.src.Core
         // ============================================================
         // ★★★ 核心算法：统一的字节单位换算 ★★★
         // ============================================================
-        // 供 TrafficHistoryForm 和 FormatValue 共同调用
-        public static string FormatDataSize(double bytes, string suffix = "")
+        // decimals: 
+        //    -1 (默认): 智能模式 (KB/MB显示1位, GB+显示2位)
+        //     0: 不显示小数 (如 12GB)
+        //     1: 强制1位 (如 12.5GB)
+        //     2: 强制2位 (如 12.55GB)
+        public static string FormatDataSize(double bytes, string suffix = "", int decimals = -1)
         {
             string[] sizes = { "KB", "MB", "GB", "TB", "PB" };
             double len = bytes;
@@ -97,12 +133,28 @@ namespace LiteMonitor.src.Core
                 order++;
                 len /= 1024.0;
             }
-  
-            // 格式化细节：
-            // 所有单位都保留1位小数 (如 0.1 KB, 1.2 MB)
-            string format = order <= 1 ? "0.0" : "0.00";
+
+            // ★★★ 核心修改：支持默认智能模式，也支持强制指定 ★★★
+            string format;
+
+            if (decimals < 0)
+            {
+                // 默认逻辑 (decimals = -1)
+                // KB(0), MB(1) -> 保留 1 位 ("0.0")
+                // GB(2) 及以上 -> 保留 2 位 ("0.00")
+                format = order <= 1 ? "0.0" : "0.00";
+            }
+            else if (decimals == 0)
+            {
+                // 强制整数
+                format = "0";
+            }
+            else
+            {
+                // 强制指定位数 (如 "0.0", "0.00")
+                format = "0." + new string('0', decimals);
+            }
             
-            // 注意：不加空格(1.2MB)，为了紧凑。如果需要空格可改为 $"{len.ToString(format)} {sizes[order]}{suffix}"
             return $"{len.ToString(format)}{sizes[order]}{suffix}";
         }
 

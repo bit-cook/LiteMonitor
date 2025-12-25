@@ -57,7 +57,14 @@ namespace LiteMonitor
         public string TaskbarColorCrit { get; set; } = "#C03030";  // 严重 (橙红)
         public string TaskbarColorBg { get; set; } = "#D2D2D2";    // 防杂边背景色 (透明键)
 
-        
+        // ★★★ 新增：内存/显存显示模式 ★★★
+        // 0 = 百分比 (默认)
+        // 1 = 已用容量
+        public int MemoryDisplayMode { get; set; } = 0;
+
+        // ★ 2. 运行时缓存：存储探测到的总容量 (GB)
+        [JsonIgnore] public static float DetectedRamTotalGB { get; set; } = 0;
+        [JsonIgnore] public static float DetectedGpuVramTotalGB { get; set; } = 0;
 
         // ====== 记录与报警 ======
         public float RecordedMaxCpuPower { get; set; } = 65.0f;
@@ -71,14 +78,10 @@ namespace LiteMonitor
         
         public ThresholdsSet Thresholds { get; set; } = new ThresholdsSet();
 
-        [JsonIgnore] 
-        public DateTime LastAlertTime { get; set; } = DateTime.MinValue;
-        [JsonIgnore] 
-        public long SessionUploadBytes { get; set; } = 0;
-        [JsonIgnore]
-        public long SessionDownloadBytes { get; set; } = 0;
-        [JsonIgnore] 
-        private DateTime _lastAutoSave = DateTime.MinValue;
+        [JsonIgnore] public DateTime LastAlertTime { get; set; } = DateTime.MinValue;
+        [JsonIgnore] public long SessionUploadBytes { get; set; } = 0;
+        [JsonIgnore] public long SessionDownloadBytes { get; set; } = 0;
+        [JsonIgnore] private DateTime _lastAutoSave = DateTime.MinValue;
 
         // ★★★★★ [核心重构] 监控项列表 ★★★★★
         // 替代了原来的 EnabledSet，支持排序、自定义名称、前后端分离

@@ -106,6 +106,16 @@ namespace LiteMonitor.src.UI.SettingsPage
                 () => Math.Round(Config.Opacity * 100) + "%",
                 s => Config.Opacity = UIUtils.ParseDouble(s) / 100.0);
 
+           
+            // ★★★ 新增：内存显示模式下拉框 ★★★
+            // 这里使用了 AddComboIndex，绑定到 Config.MemoryDisplayMode
+            string[] memOptions = { LanguageManager.T("Menu.Percent"), LanguageManager.T("Menu.UsedSize") }; 
+            AddComboIndex(group, "Menu.MemoryDisplayMode", memOptions,
+                () => Config.MemoryDisplayMode, // Getter
+                idx => Config.MemoryDisplayMode = idx // Setter
+            );
+            group.AddFullItem(new LiteNote(LanguageManager.T("Menu.MemoryDisplayModeTip"), 0));
+
             AddGroupToPage(group);
         }
 

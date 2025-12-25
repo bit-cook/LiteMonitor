@@ -4,7 +4,7 @@ using System.Linq;
 using System.IO;
 using LibreHardwareMonitor.Hardware;
 using LiteMonitor.src.Core;
-
+using Debug = System.Diagnostics.Debug;
 namespace LiteMonitor.src.SystemServices
 {
     // 依然是 HardwareMonitor 的一部分
@@ -40,6 +40,28 @@ namespace LiteMonitor.src.SystemServices
                 return GetHardwareCompositeValue(key);
             }
 
+            // ★ 修改：增强的内存计算逻辑
+            if (key == "MEM.Load")
+            {
+                // 只要还没探测到，就尝试探测
+                if (Settings.DetectedRamTotalGB <= 0)
+                {
+                    lock (_lock)
+                    {
+                        if (_map.TryGetValue("MEM.Used", out var u) && _map.TryGetValue("MEM.Available", out var a))
+                        {
+                            if (u.Value.HasValue && a.Value.HasValue)
+                            {
+                                
+                                float rawTotal = u.Value.Value + a.Value.Value;
+                                // 如果数值 > 512，认为是 MB，除以 1024；否则认为是 GB (Data 类型通常直接是 GB)
+                                Settings.DetectedRamTotalGB = rawTotal > 512.0f ? rawTotal / 1024.0f : rawTotal;
+                            }
+                        }
+                    }
+                }
+            }
+
             // 3. 显存百分比 (特殊计算)
             if (key == "GPU.VRAM")
             {
@@ -47,6 +69,12 @@ namespace LiteMonitor.src.SystemServices
                 float? total = Get("GPU.VRAM.Total");
                 if (used.HasValue && total.HasValue && total > 0)
                 {
+                    // 假设 total 是 MB (LHM SmallData 默认是 MB)这里统一转成 GB 存起来
+                    if (Settings.DetectedGpuVramTotalGB <= 0)
+                    {
+                        Settings.DetectedGpuVramTotalGB = total.Value / 1024f;
+                    }
+
                     // 简单单位换算防止数值过大溢出 (虽 float 够用，但为了逻辑统一)
                     if (total > 10485760) { used /= 1048576f; total /= 1048576f; }
                     return used / total * 100f;
@@ -516,7 +544,18 @@ namespace LiteMonitor.src.SystemServices
             }
 
             // --- Memory ---
-            if (type == HardwareType.Memory && s.SensorType == SensorType.Load && Has(name, "memory")) return "MEM.Load";
+            if (type == HardwareType.Memory) 
+            {
+                // 1. 负载 (保持不变)
+                if (s.SensorType == SensorType.Load && Has(name, "memory")) return "MEM.Load";
+                
+                // 2. ★ 增强版匹配：同时接受 Data 和 SmallData
+                if (s.SensorType == SensorType.Data || s.SensorType == SensorType.SmallData)
+                {
+                    if (Has(name, "used")) return "MEM.Used";
+                    if (Has(name, "available")) return "MEM.Available";
+                }
+            }
 
             return null;
         }
