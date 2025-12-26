@@ -261,7 +261,7 @@ namespace LiteMonitor.ThemeEditor
 
             var L = _theme.Layout;
 
-            AddNum("界面宽度 / Width (px)", () => L.Width, v => L.Width = v);
+            //AddNum("界面宽度 / Width (px)", () => L.Width, v => L.Width = v);
             AddNum("行高 / RowHeight (px)", () => L.RowHeight, v => L.RowHeight = v);
             AddNum("内边距 / Padding (px)", () => L.Padding, v => L.Padding = v);
             AddNum("窗体圆角 / CornerRadius (px)", () => L.CornerRadius, v => L.CornerRadius = v);

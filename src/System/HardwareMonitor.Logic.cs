@@ -551,6 +551,7 @@ namespace LiteMonitor.src.SystemServices
             // --- Memory ---
             if (type == HardwareType.Memory) 
             {
+                if (Has(hw.Name, "virtual")) return null;
                 // 1. 负载 (保持不变)
                 if (s.SensorType == SensorType.Load && Has(name, "memory")) return "MEM.Load";
                 
