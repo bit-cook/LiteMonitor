@@ -11,7 +11,6 @@ namespace LiteMonitor
         private readonly UIController _ui;
         private readonly System.Windows.Forms.Timer _timer = new();
 
-        // 1. 去掉 readonly，允许 ReloadLayout 重新赋值 (保留你的修改)
         private HorizontalLayout _layout;
 
         private IntPtr _hTaskbar = IntPtr.Zero;
@@ -21,32 +20,21 @@ namespace LiteMonitor
         private int _taskbarHeight = 32;
         private bool _isWin11;
 
-        // ⭐ 动态透明色键：不再是 readonly，因为要随主题变
         private Color _transparentKey = Color.Black;
-        // 记录当前是否是浅色模式，用于检测变化
         private bool _lastIsLightTheme = false;
 
         private System.Collections.Generic.List<Column>? _cols;
-        // 1. 添加字段
         private readonly MainForm _mainForm;
 
-        // ★★★ 新增：WndProc 消息常量 ★★★
         private const int WM_RBUTTONUP = 0x0205;
+        
 
-        // 公开方法：重新加载布局 (保留你的修改)
         public void ReloadLayout()
         {
-           // 1. 重新构建布局 (自动读取最新的 Settings.cs)
             _layout = new HorizontalLayout(ThemeManager.Current, 300, LayoutMode.Taskbar, _cfg);
-            
-            // 2. ★ 核心：应用穿透和颜色 ★
-            // 无论谁调用 ReloadLayout，都确保最新的穿透设置生效
             SetClickThrough(_cfg.TaskbarClickThrough);
-
-            // 强制刷新主题检查，确保自定义背景色 (TaskbarColorBg) 被应用
             CheckTheme(true);
 
-            // 3. 触发重绘
             if (_cols != null && _cols.Count > 0)
             {
                 _layout.Build(_cols, _taskbarHeight);
@@ -60,34 +48,24 @@ namespace LiteMonitor
         {
             _cfg = cfg;
             _ui = ui;
-            // 2. 初始化 MainForm 引用
             _mainForm = mainForm;
             
-            // 初始化：LayoutMode.Taskbar
-            ReloadLayout(); // 初始化布局器，读取最新的 Settings 文件
+            ReloadLayout();
 
             _isWin11 = Environment.OSVersion.Version >= new Version(10, 0, 22000);
 
-            // == 窗体基础设置 ==
             FormBorderStyle = FormBorderStyle.None;
             ShowInTaskbar = false;
             ControlBox = false;
             TopMost = false;
             DoubleBuffered = true;
 
-            // 初始化主题颜色
             CheckTheme(true);
-
-            // 查找任务栏和托盘区
             FindHandles();
-
-            // Windows Forms会在需要时自动创建句柄，无需手动调用
-            // CreateHandle();
-
-            // 挂载到任务栏
+            
+            // 尝试挂载
             AttachToTaskbar();
 
-            // 定时刷新
             _timer.Interval = Math.Max(_cfg.RefreshMs, 60);
             _timer.Tick += (_, __) => Tick();
             _timer.Start();
@@ -105,65 +83,35 @@ namespace LiteMonitor
             base.Dispose(disposing);
         }
 
-        // ====================================================================================
-        // ★★★ 核心修复：WndProc 仅针对 Win10 拦截 ★★★
-        // ====================================================================================
         protected override void WndProc(ref Message m)
         {
-            // 仅在 Win10 下拦截右键抬起 (解决 Win10 任务栏卡死问题)
             if (!_isWin11 && m.Msg == WM_RBUTTONUP)
             {
-                // Win10 必须使用异步 (BeginInvoke) 来防止死锁
                 this.BeginInvoke(new Action(ShowContextMenu));
-
-                // ★ 关键：拦截消息，不调用 base.WndProc
-                // 这样 Win10 系统任务栏就收不到这个右键，不会弹出系统菜单
                 return; 
             }
-
-            // Win11 或其他消息：不做任何拦截，走原生流程
-            // 这样会正常触发后面的 OnMouseUp，保证 Win11 行为与你原始代码完全一致
             base.WndProc(ref m);
         }
 
-        // 提取出来的显示菜单逻辑 (供 Win10 异步调用 和 Win11 OnMouseUp 调用)
         private void ShowContextMenu()
         {
-            // 1. 构建菜单 (复用 MenuManager)
             var menu = MenuManager.Build(_mainForm, _cfg, _ui);
-
-            // 2. ★★★ 核心修复：强制让 TaskbarForm 获取前台焦点 ★★★
-            // 严格保留你原始代码的写法：使用 this.Handle
-            // 确保菜单弹出后立即激活，不需要点第二次
             SetForegroundWindow(this.Handle);
-
-            // 3. 显示菜单
             menu.Show(Cursor.Position);
         }
 
-        // ====================================================================================
-        // 原生事件处理 (Win11 走这里，保持完美体验)
-        // ====================================================================================
-        
-        // 添加鼠标右键点击事件
         protected override void OnMouseUp(MouseEventArgs e)
         {
             base.OnMouseUp(e);
-
             if (e.Button == MouseButtons.Right)
             {
-                // Win10 的右键已经被 WndProc 拦截了，不会进到这里
-                // 所以这里只有 Win11 会执行，完全复刻你的原始逻辑
                 ShowContextMenu();
             }
         }
 
-        // 添加鼠标左键双击事件 (保持不变)
         protected override void OnMouseDoubleClick(MouseEventArgs e)
         {
             base.OnMouseDoubleClick(e);
-
-            // 只响应左键双击
             if (e.Button == MouseButtons.Left)
             {
                 switch (_cfg.TaskbarDoubleClickAction)
@@ -200,8 +148,10 @@ namespace LiteMonitor
         [DllImport("user32.dll")] private static extern IntPtr SetParent(IntPtr child, IntPtr parent);
         [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint flags);
         [DllImport("user32.dll")] private static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint crKey, byte bAlpha, uint dwFlags);
-         // 在 TaskbarForm 类中添加
         [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hWnd);
+        // ★★★ 新增：获取父窗口 API ★★★
+        [DllImport("user32.dll", ExactSpelling = true, CharSet = CharSet.Auto)] private static extern IntPtr GetParent(IntPtr hWnd);
+
         private const int GWL_STYLE = -16;
         private const int GWL_EXSTYLE = -20;
         private const int WS_CHILD = 0x40000000;
@@ -237,11 +187,11 @@ namespace LiteMonitor
             try
             {
                 using var key = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
-            if (key != null)
-            {
-                object? val = key.GetValue("SystemUsesLightTheme");
-                if (val is int i) return i == 1;
-            }
+                if (key != null)
+                {
+                    object? val = key.GetValue("SystemUsesLightTheme");
+                    if (val is int i) return i == 1;
+                }
             }
             catch { }
             return false;
@@ -250,73 +200,45 @@ namespace LiteMonitor
         private void CheckTheme(bool force = false)
         {
             bool isLight = IsSystemLightTheme();
-
-            // 如果主题没变且不是强制刷新，则忽略
             if (!force && isLight == _lastIsLightTheme) return;
-
             _lastIsLightTheme = isLight;
 
-            // ★★★ [修改] 背景色逻辑 ★★★
             if (_cfg.TaskbarCustomStyle)
             {
-                // 自定义模式
                 try 
                 {
                     Color customColor = ColorTranslator.FromHtml(_cfg.TaskbarColorBg);
-                    
-                    // 【核心修复】：如果 R=G=B (纯灰色)，会导致鼠标穿透问题
-                    // 解决方案：给 B 通道强制 +1 或 -1，使其不再是纯灰
                     if (customColor.R == customColor.G && customColor.G == customColor.B)
                     {
                         int r = customColor.R;
                         int g = customColor.G;
                         int b = customColor.B;
-
-                        // 偏移 B 值
                         if (b >= 255) b = 254; else b += 1;
-                        
                         _transparentKey = Color.FromArgb(r, g, b);
                     }
                     else
                     {
-                        // 如果本来就不是纯灰（比如 #858586），直接用
                         _transparentKey = customColor;
                     }
                 } 
-                catch 
-                {
-                    _transparentKey = Color.Black; 
-                }
+                catch { _transparentKey = Color.Black; }
             }
             else
             {
-                // 原有模式 (这里本来就是 R=G!=B，所以一直没问题)
-                if (isLight) _transparentKey = Color.FromArgb(210, 210, 211); // 240!=241
-                else _transparentKey = Color.FromArgb(40, 40, 41);       // 40!=41
+                if (isLight) _transparentKey = Color.FromArgb(210, 210, 211); 
+                else _transparentKey = Color.FromArgb(40, 40, 41);       
             }
 
-            // 更新 WinForms 属性 (让背景色完全等于 Key，保持视觉一致)
             BackColor = _transparentKey;
-
-            // 更新 API 属性 (如果句柄已创建)
-            if (IsHandleCreated)
-            {
-                ApplyLayeredAttribute();
-            }
-            
-            // 建议强制重绘一下，确保颜色更新立即反映
+            if (IsHandleCreated) ApplyLayeredAttribute();
             Invalidate();
         }
 
-        // 2. 添加鼠标穿透控制方法
         public void SetClickThrough(bool enable)
         {
             int exStyle = GetWindowLong(Handle, GWL_EXSTYLE);
-            if (enable)
-                exStyle |= WS_EX_TRANSPARENT; // 添加穿透
-            else
-                exStyle &= ~WS_EX_TRANSPARENT; // 移除穿透
-            
+            if (enable) exStyle |= WS_EX_TRANSPARENT; 
+            else exStyle &= ~WS_EX_TRANSPARENT; 
             SetWindowLong(Handle, GWL_EXSTYLE, exStyle);
         }
 
@@ -338,45 +260,36 @@ namespace LiteMonitor
         private void AttachToTaskbar()
         {
             if (_hTaskbar == IntPtr.Zero) FindHandles();
+            if (_hTaskbar == IntPtr.Zero) return;
 
+            // 尝试将自己设为任务栏子窗口
             SetParent(Handle, _hTaskbar);
 
             int style = GetWindowLong(Handle, GWL_STYLE);
+            // 必须移除 WS_POPUP (0x80000000)，添加 WS_CHILD
             style &= (int)~0x80000000;
             style |= WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS;
             SetWindowLong(Handle, GWL_STYLE, style);
-
-            // int exStyle = GetWindowLong(Handle, GWL_EXSTYLE);
-            // exStyle |= WS_EX_LAYERED | WS_EX_TOOLWINDOW;
-            // SetWindowLong(Handle, GWL_EXSTYLE, exStyle);
 
             ApplyLayeredAttribute();
         }
 
         private void Tick()
         {
-            // 每5秒检查一次主题变化（比每秒检查效率高很多）
-            if (Environment.TickCount % 5000 < _cfg.RefreshMs)
-            {
-                CheckTheme();
-            }
+            if (Environment.TickCount % 5000 < _cfg.RefreshMs) CheckTheme();
 
             _cols = _ui.GetTaskbarColumns();
             if (_cols == null || _cols.Count == 0) return;
+            
             UpdateTaskbarRect(); 
                 
-            // 重新构建布局 (Build 内部也有 MeasureText，能省则省)
             _layout.Build(_cols, _taskbarHeight);
             Width = _layout.PanelWidth;
             Height = _taskbarHeight;
             
             UpdatePlacement(Width);
-
-            // 最终渲染
             Invalidate();
         }
-
-
 
         // -------------------------------------------------------------
         // 定位与辅助
@@ -386,20 +299,30 @@ namespace LiteMonitor
             APPBARDATA abd = new APPBARDATA();
             abd.cbSize = Marshal.SizeOf(abd);
             uint res = SHAppBarMessage(ABM_GETTASKBARPOS, ref abd);
+            
             if (res != 0)
+            {
                 _taskbarRect = Rectangle.FromLTRB(abd.rc.left, abd.rc.top, abd.rc.right, abd.rc.bottom);
+            }
             else
             {
+                // ★★★ 核心修复：API 失败时的 Fallback ★★★
+                // 确保默认认为任务栏在底部，而不是 (0,0,0,0)
                 var s = Screen.PrimaryScreen;
                 if (s != null)
                 {
-                    _taskbarRect = new Rectangle(s.WorkingArea.Left, s.WorkingArea.Bottom, s.WorkingArea.Width, s.Bounds.Bottom - s.WorkingArea.Bottom);
+                    int fallbackHeight = 40; // 假设标准高度
+                    _taskbarRect = new Rectangle(
+                        s.Bounds.Left, 
+                        s.Bounds.Bottom - fallbackHeight, 
+                        s.Bounds.Width, 
+                        fallbackHeight
+                    );
                 }
             }
             _taskbarHeight = Math.Max(24, _taskbarRect.Height);
         }
 
-       // 1. 检测 Win11 是否居中 (现有的，供菜单使用)
         public static bool IsCenterAligned()
         {
             if (Environment.OSVersion.Version.Major < 10 || Environment.OSVersion.Version.Build < 22000) 
@@ -412,71 +335,39 @@ namespace LiteMonitor
             catch { return false; }
         }
 
-
-        // ======================
-        //  获取任务栏 DPI（最准确）
-        // ======================
-        [DllImport("user32.dll")]
-        private static extern uint GetDpiForWindow(IntPtr hWnd);
-
+        [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr hWnd);
         public static int GetTaskbarDpi()
         {
-            // 使用任务栏句柄（静态也能获取）
             IntPtr taskbar = FindWindow("Shell_TrayWnd", null);
             if (taskbar != IntPtr.Zero)
             {
-                try
-                {
-                    return (int)GetDpiForWindow(taskbar);
-                }
-                catch { }
+                try { return (int)GetDpiForWindow(taskbar); } catch { }
             }
-
-            return 96; // fallback
+            return 96;
         }
 
-
-
-         // ==========================
-            //  Windows 11 Widgets 检测
-            // ==========================
         public static int GetWidgetsWidth()
         {
             int dpi = TaskbarForm.GetTaskbarDpi();
-
-            // ==========================
-            //  Windows 11 Widgets 检测
-            // ==========================
             if (Environment.OSVersion.Version >= new Version(10, 0, 22000))
             {
                 string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
                 string pkg = Path.Combine(local, "Packages");
-
-                // 无 WebExperience 包 = Win11 无 Widgets
-                bool hasWidgetPkg = Directory.GetDirectories(pkg, "MicrosoftWindows.Client.WebExperience*").Any();
+                bool hasWidgetPkg = false;
+                try { hasWidgetPkg = Directory.GetDirectories(pkg, "MicrosoftWindows.Client.WebExperience*").Any(); } catch {}
+                
                 if (!hasWidgetPkg) return 0;
 
-                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
-                    @"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced");
+                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced");
                 if (key == null) return 0;
 
                 object? val = key.GetValue("TaskbarDa");
-                if (val is int i)
-                {
-                    if (i != 0)
-                        return 150 * dpi / 96;   // Win11 Widgets 宽度
-                    else
-                        return 0;
-                }
-
-                return 0;
+                if (val is int i && i != 0) return 150 * dpi / 96;
             }
-
             return 0;
         }
 
-
-        // 2. 更新位置 (调用 GetWidgetsWidth)
+       // ★★★ 核心修复：防飞天 + 强制置顶 ★★★
         private void UpdatePlacement(int panelWidth)
         {
             if (_hTaskbar == IntPtr.Zero) return;
@@ -484,57 +375,73 @@ namespace LiteMonitor
             var scr = Screen.PrimaryScreen;
             if (scr == null) return;
             
-            bool bottom = _taskbarRect.Bottom >= scr.Bounds.Bottom - 2;
             GetWindowRect(_hTray, out RECT tray);
+            bool bottom = _taskbarRect.Bottom >= scr.Bounds.Bottom - 2;
 
-            // 1. 获取当前系统状态
-            bool sysCentered = IsCenterAligned(); // 系统是否居中
-            bool alignLeft = _cfg.TaskbarAlignLeft && sysCentered; // 用户是否要在居中模式下强行居左
-
-            // 2. 智能计算右侧的“小组件避让宽度”
-            // 逻辑：如果系统是居中的，小组件在最左边，右边不需要避让，offset = 0
-            //       如果系统是居左的，小组件可能在托盘左边，右边需要避让，offset = GetWidgetsWidth()
+            // 1. 获取系统对齐状态
+            bool sysCentered = IsCenterAligned(); 
+            bool alignLeft = _cfg.TaskbarAlignLeft && sysCentered; 
             int rightSideWidgetOffset = sysCentered ? 0 : GetWidgetsWidth();
 
             int leftScreen, topScreen;
 
-            // Y轴计算 (保持不变)
+            // Y轴计算
             if (bottom) topScreen = _taskbarRect.Bottom - _taskbarHeight;
             else topScreen = _taskbarRect.Top;
 
             // X轴计算
             if (alignLeft)
             {
-                // === 用户强制居左 (仅 Win11 居中时有效) ===
-                // 基准：任务栏左边缘 + 6px
-                // 避让：如果开启了小组件，这里需要向右推 160px (因为居中模式下小组件在最左边)
                 int startX = _taskbarRect.Left + 6;
-                // 检测 Win11 小组件是否存在 (TaskbarDa 注册表检测逻辑，或者复用 GetWidgetsWidth > 0)
-                if (GetWidgetsWidth() > 0) 
-                {
-                    startX += GetWidgetsWidth(); // 或者是固定值 160
-                }
+                if (GetWidgetsWidth() > 0) startX += GetWidgetsWidth();
                 leftScreen = startX;
             }
             else
             {
-                // === 居右模式 (默认) ===
-                // 基准：托盘左边缘 - 插件宽 - 6px
-                // 避让：应用上面计算的 rightSideWidgetOffset
                 leftScreen = tray.left - panelWidth - 6 - rightSideWidgetOffset;
             }
 
-            POINT pt = new POINT { X = leftScreen, Y = topScreen };
-            ScreenToClient(_hTaskbar, ref pt);
-            SetWindowPos(Handle, IntPtr.Zero, pt.X, pt.Y, panelWidth, _taskbarHeight, SWP_NOZORDER | SWP_NOACTIVATE);
+            // ===========================================================
+            // ★★★ 防飞天逻辑 (含 Z-Order 修复) ★★★
+            // ===========================================================
+            
+            IntPtr currentParent = GetParent(Handle);
+            bool isAttached = (currentParent == _hTaskbar);
+
+            // 如果断开了，尝试重连
+            if (!isAttached)
+            {
+                AttachToTaskbar();
+                currentParent = GetParent(Handle);
+                isAttached = currentParent == _hTaskbar;
+            }
+
+            int finalX = leftScreen;
+            int finalY = topScreen;
+            
+            if (isAttached)
+            {
+                // [情况A] 正常挂载：坐标转为相对坐标
+                POINT pt = new POINT { X = leftScreen, Y = topScreen };
+                ScreenToClient(_hTaskbar, ref pt);
+                finalX = pt.X;
+                finalY = pt.Y;
+
+                // 保持原有的层级关系 (由任务栏管理)，不改变 Z-Order
+                SetWindowPos(Handle, IntPtr.Zero, finalX, finalY, panelWidth, _taskbarHeight, SWP_NOZORDER | SWP_NOACTIVATE);
+            }
+            else
+            {
+                // [情况B] 挂载失败 / 测试模式：使用绝对坐标
+                // ★关键修正★：必须移除 SWP_NOZORDER，并传入 HWND_TOPMOST (-1)
+                // 否则普通窗口会被任务栏遮挡，导致"看不见"
+                IntPtr HWND_TOPMOST = (IntPtr)(-1);
+                SetWindowPos(Handle, HWND_TOPMOST, finalX, finalY, panelWidth, _taskbarHeight, SWP_NOACTIVATE);
+            }
         }
 
-        // -------------------------------------------------------------
-        // 绘制
-        // -------------------------------------------------------------
         protected override void OnPaintBackground(PaintEventArgs e)
         {
-            // 用当前的透明键颜色填充
             e.Graphics.Clear(_transparentKey);
         }
 
@@ -542,16 +449,10 @@ namespace LiteMonitor
         {
             if (_cols == null) return;
             var g = e.Graphics;
-
-            // 可以尝试调整这里，ClearType 在 ColorKey 模式下可能不如 AntiAlias 干净
             g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
             g.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
-
-            // ⭐ 建议：如果上面的修改还是有轻微杂边，可以将下面这一行改为 AntiAlias
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.ClearTypeGridFit;
-
             TaskbarRenderer.Render(g, _cols, _lastIsLightTheme);
-
         }
 
         protected override CreateParams CreateParams
@@ -559,17 +460,9 @@ namespace LiteMonitor
             get
             {
                 CreateParams cp = base.CreateParams;
-                // 保留 Layered 和 ToolWindow，但在任务栏模式下，必须允许鼠标交互
                 cp.ExStyle |= WS_EX_LAYERED | WS_EX_TOOLWINDOW; 
-                
-                // ★★★ 删掉或注释掉下面这行鼠标穿透 WS_EX_TRANSPARENT ★★★
-                // cp.ExStyle |= WS_EX_TRANSPARENT; 
-                
                 return cp;
             }
         }
-
     }
-
-
 }
