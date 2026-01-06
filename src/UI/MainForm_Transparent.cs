@@ -91,60 +91,33 @@ namespace LiteMonitor
             // ===== 模式判断 =====
             bool isHorizontal = _cfg.HorizontalMode;
 
-            // ===== 竖屏：左右贴边隐藏 =====
-            bool nearLeft = false, nearRight = false;
-
-            // ===== 横屏：上下贴边隐藏 =====
-            bool nearTop = false, nearBottom = false;
-
-            if (!isHorizontal)
-            {
-                // 竖屏 → 左右隐藏
-                nearLeft = Left <= area.Left + _hideThreshold;
-                nearRight = area.Right - Right <= _hideThreshold;
-            }
-            else
-            {
-                // 横屏 → 上下隐藏
-                nearTop = Top <= area.Top + _hideThreshold;
-                //nearBottom = area.Bottom - Bottom <= _hideThreshold; //下方不隐藏 会和任务量冲突
-            }
+            // ===== 无论横竖模式都支持上、左、右三边靠边隐藏 =====
+            bool nearLeft = Left <= area.Left + _hideThreshold;
+            bool nearRight = area.Right - Right <= _hideThreshold;
+            bool nearTop = Top <= area.Top + _hideThreshold;
+            //bool nearBottom = area.Bottom - Bottom <= _hideThreshold; //下方不隐藏 会和任务量冲突
 
             // ===== 是否应该隐藏 =====
-            bool shouldHide =
-                (!isHorizontal && (nearLeft || nearRight)) ||
-                (isHorizontal && (nearTop || nearBottom));
+            bool shouldHide = nearLeft || nearRight || nearTop;
 
             // ===== 靠边 → 自动隐藏 =====
             if (!_isHidden && shouldHide && !Bounds.Contains(cursor))
             {
-                if (!isHorizontal)
+                // ========= 统一处理上、左、右三边隐藏 =========
+                if (nearRight)
                 {
-                    // ========= 竖屏：左右隐藏 =========
-                    if (nearRight)
-                    {
-                        Left = area.Right - _hideWidth;
-                        _dock = DockEdge.Right;
-                    }
-                    else
-                    {
-                        Left = area.Left - (Width - _hideWidth);
-                        _dock = DockEdge.Left;
-                    }
+                    Left = area.Right - _hideWidth;
+                    _dock = DockEdge.Right;
                 }
-                else
+                else if (nearLeft)
                 {
-                    // ========= 横屏：上下隐藏 =========
-                    if (nearBottom)
-                    {
-                        Top = area.Bottom - _hideWidth;
-                        _dock = DockEdge.Bottom;
-                    }
-                    else
-                    {
-                        Top = area.Top - (Height - _hideWidth);
-                        _dock = DockEdge.Top;
-                    }
+                    Left = area.Left - (Width - _hideWidth);
+                    _dock = DockEdge.Left;
+                }
+                else if (nearTop)
+                {
+                    Top = area.Top - (Height - _hideWidth);
+                    _dock = DockEdge.Top;
                 }
 
                 _isHidden = true;
@@ -159,56 +132,34 @@ namespace LiteMonitor
                 // 关键修复：只有当鼠标在隐藏的面板区域内时，才显示面板
                 bool isMouseOnHiddenPanel = false;
                 
-                if (!isHorizontal)
-                {
-                    // 竖屏模式
-                    if (_dock == DockEdge.Right)
-                        isMouseOnHiddenPanel = cursor.X >= area.Right - _hideWidth && cursor.Y >= Top && cursor.Y <= Top + Height;
-                    else if (_dock == DockEdge.Left)
-                        isMouseOnHiddenPanel = cursor.X <= area.Left + _hideWidth && cursor.Y >= Top && cursor.Y <= Top + Height;
-                }
-                else
-                {
-                    // 横屏模式
-                    if (_dock == DockEdge.Bottom)
-                        isMouseOnHiddenPanel = cursor.Y >= area.Bottom - _hideWidth && cursor.X >= Left && cursor.X <= Left + Width;
-                    else if (_dock == DockEdge.Top)
-                        isMouseOnHiddenPanel = cursor.Y <= area.Top + _hideWidth && cursor.X >= Left && cursor.X <= Left + Width;
-                }
+                // ========= 统一处理上、左、右三边检测 =========
+                if (_dock == DockEdge.Right)
+                    isMouseOnHiddenPanel = cursor.X >= area.Right - _hideWidth && cursor.Y >= Top && cursor.Y <= Top + Height;
+                else if (_dock == DockEdge.Left)
+                    isMouseOnHiddenPanel = cursor.X <= area.Left + _hideWidth && cursor.Y >= Top && cursor.Y <= Top + Height;
+                else if (_dock == DockEdge.Top)
+                    isMouseOnHiddenPanel = cursor.Y <= area.Top + _hideWidth && cursor.X >= Left && cursor.X <= Left + Width;
 
                 if (isMouseOnHiddenPanel)
                 {
-                    if (!isHorizontal)
+                    // ======== 统一处理上、左、右三边弹出 ========
+                    if (_dock == DockEdge.Right && cursor.X >= area.Right - hoverBand)
                     {
-                        // ======== 竖屏：左右弹出 ========
-                        if (_dock == DockEdge.Right && cursor.X >= area.Right - hoverBand)
-                        {
-                            Left = area.Right - Width;
-                            _isHidden = false;
-                            _dock = DockEdge.None;
-                        }
-                        else if (_dock == DockEdge.Left && cursor.X <= area.Left + hoverBand)
-                        {
-                            Left = area.Left;
-                            _isHidden = false;
-                            _dock = DockEdge.None;
-                        }
+                        Left = area.Right - Width;
+                        _isHidden = false;
+                        _dock = DockEdge.None;
                     }
-                    else
+                    else if (_dock == DockEdge.Left && cursor.X <= area.Left + hoverBand)
                     {
-                        // ======== 横屏：上下弹出 ========
-                        if (_dock == DockEdge.Bottom && cursor.Y >= area.Bottom - hoverBand)
-                        {
-                            Top = area.Bottom - Height;
-                            _isHidden = false;
-                            _dock = DockEdge.None;
-                        }
-                        else if (_dock == DockEdge.Top && cursor.Y <= area.Top + hoverBand)
-                        {
-                            Top = area.Top;
-                            _isHidden = false;
-                            _dock = DockEdge.None;
-                        }
+                        Left = area.Left;
+                        _isHidden = false;
+                        _dock = DockEdge.None;
+                    }
+                    else if (_dock == DockEdge.Top && cursor.Y <= area.Top + hoverBand)
+                    {
+                        Top = area.Top;
+                        _isHidden = false;
+                        _dock = DockEdge.None;
                     }
                 }
             }

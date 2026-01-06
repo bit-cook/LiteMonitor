@@ -30,11 +30,11 @@ namespace LiteMonitor
         // ========================================================
         private static readonly string[] VersionJsonUrls =
         {
+             // 国官网源
+            "https://litemonitor.cn/update/version.json",
+            
             // Gitee RAW（自动 fallback 使用）
              "https://gitee.com/Diorser/LiteMonitor/raw/master/resources/version.json",
-
-            // 国官网源
-            "https://litemonitor.cn/update/version.json",
 
             // GitHub RAW（自动 fallback 使用）
              "https://raw.githubusercontent.com/Diorser/LiteMonitor/master/resources/version.json",

@@ -264,15 +264,22 @@ namespace LiteMonitor.src.SystemServices
             // A. 尝试运行时缓存
             if (_cachedNetHw != null)
             {
-                float? cachedVal = ReadNetworkSensor(_cachedNetHw, key);
-                // 逻辑优化：
-                // 1. 如果有流量，直接用。
-                // 2. 如果没流量，但距离上次全盘扫描还不到 3 秒 (配合 UpdateAll 的节奏)，也直接用 0。
-                //    不要每秒都去扫，那样太耗 CPU。
-                if ((cachedVal.HasValue && cachedVal.Value > 0.1f) || 
-                    (DateTime.Now - _lastNetScan).TotalSeconds < 3) 
+                // ★★★ 【修复 1】存活检查：如果缓存的硬件对象已经不在当前的硬件列表中（已失效），强制丢弃 ★★★
+                if (!_computer.Hardware.Contains(_cachedNetHw))
                 {
-                    return cachedVal;
+                    _cachedNetHw = null;
+                }
+                else
+                {
+                    float? cachedVal = ReadNetworkSensor(_cachedNetHw, key);
+                    // 逻辑优化：
+                    // 1. 如果有流量，直接用。
+                    // 2. 如果没流量，但距离上次全盘扫描还不到 3 秒，也直接用。
+                    if ((cachedVal.HasValue && cachedVal.Value > 0.1f) ||
+                        (DateTime.Now - _lastNetScan).TotalSeconds < 3)
+                    {
+                        return cachedVal;
+                    }
                 }
                 // 如果超过 3 秒还是没流量，说明可能切网卡了，放行到底部去全盘扫描
             }
@@ -380,13 +387,21 @@ namespace LiteMonitor.src.SystemServices
 
         private float? GetBestDiskValue(string key)
         {
-            // A. 尝试运行时缓存
+           // A. 尝试运行时缓存
             if (_cachedDiskHw != null)
             {
-                float? cachedVal = ReadDiskSensor(_cachedDiskHw, key);
-                // 有读写活动或冷却期内，直接返回
-                if ((cachedVal.HasValue && cachedVal.Value > 0.1f) || (DateTime.Now - _lastDiskScan).TotalSeconds < 10)
-                    return cachedVal;
+                // ★★★ 【修复 2】存活检查：防止持有僵尸对象的引用 ★★★
+                if (!_computer.Hardware.Contains(_cachedDiskHw))
+                {
+                    _cachedDiskHw = null;
+                }
+                else
+                {
+                    float? cachedVal = ReadDiskSensor(_cachedDiskHw, key);
+                    // 有读写活动或冷却期内，直接返回
+                    if ((cachedVal.HasValue && cachedVal.Value > 0.1f) || (DateTime.Now - _lastDiskScan).TotalSeconds < 10)
+                        return cachedVal;
+                }
             }
 
             // ★★★ [新增] B. 尝试启动时缓存 (Settings 记忆) ★★★

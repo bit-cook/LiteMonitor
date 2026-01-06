@@ -56,6 +56,11 @@ namespace LiteMonitor.src.SystemServices
                 // 简单的锁保护（虽然 UpdateAll 一般不锁，但尽量安全点）
                 lock (_lock) 
                 {
+                    // ★★★ 【修复 3】重载前必须清空所有缓存引用 ★★★
+                    _cachedNetHw = null;
+                    _cachedDiskHw = null;
+                    _netStates.Clear(); // 清除网络状态累积，防止内存泄漏
+                    _cpuCoreCache.Clear(); // 虽然 BuildSensorMap 会重建，但清空更安全
                     _computer.Close();
                     _computer.Open();
                 }

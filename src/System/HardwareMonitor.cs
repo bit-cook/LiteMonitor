@@ -28,6 +28,11 @@ namespace LiteMonitor.src.SystemServices
         private DateTime _startTime = DateTime.Now;      // 启动时间
         
         private DateTime _lastSlowScan = DateTime.Now;   //  初始值为 Now，强迫程序启动时先等 3 秒再进行慢速全盘扫描，防止卡顿
+        // ★★★ [新增] 1. 硬盘专用的后台慢速扫描计时器 (10秒) ★★★
+        private DateTime _lastDiskBgScan = DateTime.Now; 
+
+        // ★★★ [新增] 2. 记录每个硬盘最后一次活跃的时间 (用于判断是否深睡) ★★★
+        private Dictionary<IHardware, DateTime> _diskLastActiveTime = new();
         
        // --- 流量统计专用字段 ---
         private DateTime _lastTrafficTime = DateTime.Now; // 积分时间戳
@@ -146,6 +151,9 @@ namespace LiteMonitor.src.SystemServices
 
                 bool isStartupPhase = (DateTime.Now - _startTime).TotalSeconds < 3;
                 bool isSlowScanTick = (DateTime.Now - _lastSlowScan).TotalSeconds > 3;
+                // ★★★ [新增] 10秒硬盘后台慢速扫描计时器 ★★★
+                bool needDiskBgScan = (DateTime.Now - _lastDiskBgScan).TotalSeconds > 10;
+
                 // ★★★ 加锁开始：进入临界区 ★★★
                 lock (_lock)
                 {
@@ -181,27 +189,80 @@ namespace LiteMonitor.src.SystemServices
                             }
                             continue;
                         }
-
                         // Storage
                         if (hw.HardwareType == HardwareType.Storage)
                         {
                             if (needDisk)
                             {
-                                bool isTarget = (_cachedDiskHw != null && hw == _cachedDiskHw) ||
-                                                (hw.Name == _cfg.LastAutoDisk) ||
-                                                (hw.Name == _cfg.PreferredDisk);
-
-                                if (isTarget)
-                                {
-                                    hw.Update();
-                                }
-                                else if (isStartupPhase)
+                                // 1. 严格遵守首选磁盘锁定（如果你只关心 SSD，HDD 永远不会被碰）
+                                if (!string.IsNullOrEmpty(_cfg.PreferredDisk) && 
+                                    !hw.Name.Equals(_cfg.PreferredDisk, StringComparison.OrdinalIgnoreCase))
                                 {
                                     continue;
                                 }
-                                else if (isSlowScanTick)
+
+                                // 初始化活跃时间记录
+                                if (!_diskLastActiveTime.ContainsKey(hw)) _diskLastActiveTime[hw] = DateTime.Now;
+
+                                // 判断是否是当前 UI 上显示的那个盘
+                                bool isTarget = (_cachedDiskHw != null && hw == _cachedDiskHw) ||
+                                                (hw.Name == _cfg.LastAutoDisk) ||
+                                                (hw.Name == _cfg.PreferredDisk);
+                                
+                                bool shouldUpdate = false;
+                                double idleMinutes = (DateTime.Now - _diskLastActiveTime[hw]).TotalMinutes;
+
+                                // === 🧠 智能退避核心逻辑 ===
+                                if (isTarget)
+                                {
+                                    // A. 如果是当前显示的盘：只要 UI 亮着，就必须更新（保证体验）
+                                    // 但如果它也闲置太久(>10分钟)，也可以考虑降频，不过为了流畅度暂且保持
+                                    shouldUpdate = true;
+                                }
+                                else
+                                {
+                                    // B. 如果是后台盘（比如你的 E 盘）：
+                                    if (idleMinutes > 5) 
+                                    {
+                                        // [💤 深睡模式] 超过 5 分钟没动静 -> 彻底不扫！
+                                        // 硬盘将由 Windows 接管进入物理休眠，LiteMonitor 假装它不存在。
+                                        shouldUpdate = false;
+                                    }
+                                    else if (idleMinutes > 1)
+                                    {
+                                        // [❄️ 冷却模式] 超过 1 分钟没动静 -> 降频到 10秒 扫一次 (使用 _lastDiskBgScan)
+                                        // 偶尔看一眼有没有突发流量
+                                        if (needDiskBgScan) shouldUpdate = true;
+                                    }
+                                    else
+                                    {
+                                        // [🔥 活跃模式] 最近 1 分钟有动静 -> 3秒 扫一次 (使用 isSlowScanTick)
+                                        // 保持灵敏，万一你开始拷文件能马上反应过来
+                                        if (isSlowScanTick) shouldUpdate = true;
+                                    }
+                                }
+
+                                // 执行更新
+                                if (shouldUpdate)
                                 {
                                     hw.Update();
+
+                                    // ★★★ 检查是否有流量，如果有，重置活跃计时器（喂它一口“活跃药水”）★★★
+                                    bool hasTraffic = false;
+                                    foreach (var s in hw.Sensors)
+                                    {
+                                        // 检查读写速度是否 > 0 (忽略微小的底噪)
+                                        if (s.SensorType == SensorType.Throughput && s.Value.HasValue && s.Value.Value > 1024) // > 1KB/s
+                                        {
+                                            hasTraffic = true;
+                                            break;
+                                        }
+                                    }
+
+                                    if (hasTraffic)
+                                    {
+                                        _diskLastActiveTime[hw] = DateTime.Now; // 既然动了，就记作活跃
+                                    }
                                 }
                             }
                             continue;
@@ -210,6 +271,8 @@ namespace LiteMonitor.src.SystemServices
                 }
 
                 if (isSlowScanTick) _lastSlowScan = DateTime.Now;
+                // ★★★ [新增] 重置硬盘计时器 ★★★
+                if (needDiskBgScan) _lastDiskBgScan = DateTime.Now;
 
                 // ★★★ [新增] 更新系统 CPU 计数器 ★★★
                 if (_cfg.UseSystemCpuLoad)
