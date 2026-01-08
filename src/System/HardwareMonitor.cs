@@ -36,6 +36,7 @@ namespace LiteMonitor.src.SystemServices
             _cfg = cfg;
             Instance = this;
 
+            // 1. 配置全开 (代码最干净)
             _computer = new Computer()
             {
                 IsCpuEnabled = true,
@@ -43,27 +44,37 @@ namespace LiteMonitor.src.SystemServices
                 IsMemoryEnabled = true,
                 IsNetworkEnabled = true,
                 IsStorageEnabled = true,
-                // ★★★ 修改：开启主板，关闭控制器(遵照指示) ★★★
                 IsMotherboardEnabled = true,
                 IsControllerEnabled = true,
             };
 
-            // 初始化子服务
+            // 2. 初始化服务
             _sensorMap = new SensorMap();
             _networkManager = new NetworkManager();
             _diskManager = new DiskManager();
             _driverInstaller = new DriverInstaller(cfg, _computer, ReloadComputerSafe);
             _valueProvider = new HardwareValueProvider(_computer, cfg, _sensorMap, _networkManager, _diskManager, _lock, _lastValidMap);
 
+            // 3. 异步启动 (唯一优化：不卡UI)
             Task.Run(async () =>
             {
                 try
                 {
-                    _computer.Open();
-                    _sensorMap.Rebuild(_computer, cfg); // ★★★ 传入 cfg
+                    // 这句耗时 4-5 秒，但在执行过程中，硬件会陆续添加到 _computer.Hardware
+                    _computer.Open(); 
+
+                    // 只有全部扫描完，才建立高速 Map
+                    lock (_lock)
+                    {
+                        _sensorMap.Rebuild(_computer, cfg);
+                    }
+                    
                     await _driverInstaller.SmartCheckDriver();
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Init Error: {ex.Message}");
+                }
             });
         }
 
