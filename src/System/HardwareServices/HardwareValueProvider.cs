@@ -171,7 +171,7 @@ namespace LiteMonitor.src.SystemServices
             }
             
             // ★★★ [新增] 风扇与主板温度获取 ★★★
-            if (key == "CPU.Fan" || key == "CASE.Fan" || key == "GPU.Fan" || key == "MOBO.Temp")
+            if (key == "CPU.Fan" || key == "CPU.Pump" || key == "CASE.Fan" || key == "GPU.Fan")
             {
                 lock (_lock)
                 {

@@ -104,6 +104,7 @@ namespace LiteMonitor.src.UI.SettingsPage
 
             // [新增] 风扇转速最大值设置
             AddCalib("Items.CPU.Fan",   "RPM", () => Config.RecordedMaxCpuFan,     v => Config.RecordedMaxCpuFan = v);
+            AddCalib("Items.CPU.Pump", "RPM", () => Config.RecordedMaxCpuPump, v => Config.RecordedMaxCpuPump = v);
             AddCalib("Items.GPU.Fan",   "RPM", () => Config.RecordedMaxGpuFan,     v => Config.RecordedMaxGpuFan = v);
             AddCalib("Items.CASE.Fan",  "RPM", () => Config.RecordedMaxChassisFan, v => Config.RecordedMaxChassisFan = v);
 
@@ -151,8 +152,13 @@ namespace LiteMonitor.src.UI.SettingsPage
                 v => Config.PreferredCaseFan = (v == strAuto) ? "" : v
             );
 
-            // 4. 其他设置
-            AddBool(group, "Menu.UseSystemCpuLoad", () => Config.UseSystemCpuLoad, v => Config.UseSystemCpuLoad = v);
+            // 水冷泵选择
+            AddCombo(group, "Items.CPU.Pump", fans,
+                () => string.IsNullOrEmpty(Config.PreferredCpuPump) ? strAuto : Config.PreferredCpuPump,
+                v => Config.PreferredCpuPump = (v == strAuto) ? "" : v
+            );
+
+           
             
             // 5. 刷新率
             int[] rates = { 100, 200, 300, 500, 600, 700, 800, 1000, 1500, 2000, 3000 };
@@ -163,6 +169,9 @@ namespace LiteMonitor.src.UI.SettingsPage
                     Config.RefreshMs = val < 50 ? 1000 : val;
                 }
             );
+
+             // 4. 其他设置
+            AddBool(group, "Menu.UseSystemCpuLoad", () => Config.UseSystemCpuLoad, v => Config.UseSystemCpuLoad = v);
             group.AddFullItem(new LiteNote(LanguageManager.T("Menu.UseSystemCpuLoadTip"), 0));
             
             AddGroupToPage(group);

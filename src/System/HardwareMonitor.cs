@@ -109,7 +109,7 @@ namespace LiteMonitor.src.SystemServices
                         }
                         
                         // ★★★ [新增] 递归更新主板 (Motherboard / SuperIO) ★★★
-                        if ((hw.HardwareType == HardwareType.Motherboard || hw.HardwareType == HardwareType.SuperIO) && needMobo)
+                        if ((hw.HardwareType == HardwareType.Motherboard || hw.HardwareType == HardwareType.SuperIO|| hw.HardwareType == HardwareType.Cooler) && needMobo)
                         {
                              UpdateWithSubHardware(hw);
                              continue;
@@ -201,21 +201,6 @@ namespace LiteMonitor.src.SystemServices
             
             // 排序并去重，让列表更整洁
             list.Sort(); 
-            return list.Distinct().ToList();
-        }
-
-        // ★★★ [新增] 列出主板温度 ★★★
-        public static List<string> ListAllMoboTemps()
-        {
-            if (Instance == null) return new List<string>();
-            var list = new List<string>();
-            foreach (var hw in Instance._computer.Hardware)
-            {
-                if (hw.HardwareType == HardwareType.Motherboard || hw.HardwareType == HardwareType.SuperIO)
-                {
-                    list.AddRange(GetAllSensors(hw, SensorType.Temperature).Select(s => s.Name));
-                }
-            }
             return list.Distinct().ToList();
         }
 

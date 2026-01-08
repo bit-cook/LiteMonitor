@@ -36,6 +36,7 @@ namespace LiteMonitor
         
         // ★★★ [新增] 首选风扇 ★★★
         public string PreferredCpuFan { get; set; } = "";
+        public string PreferredCpuPump { get; set; } = ""; // 保存用户选的水冷接口
         public string PreferredCaseFan { get; set; } = "";
 
         // 主窗体所在的屏幕设备名 (用于记忆上次位置)
@@ -88,9 +89,10 @@ namespace LiteMonitor
         public float RecordedMaxGpuClock { get; set; } = 1800.0f;
         
         // ★★★ [新增] 风扇最大值记录 ★★★
-        public float RecordedMaxCpuFan { get; set; } = 4000f;
-        public float RecordedMaxGpuFan { get; set; } = 3500f;
-        public float RecordedMaxChassisFan { get; set; } = 3000f;
+        public float RecordedMaxCpuFan { get; set; } = 4000;
+        public float RecordedMaxCpuPump { get; set; } = 5000; // 水冷最大转速 (用于百分比计算)
+        public float RecordedMaxGpuFan { get; set; } = 3500;
+        public float RecordedMaxChassisFan { get; set; } = 3000;
 
         public bool MaxLimitTipShown { get; set; } = false;
         
@@ -140,7 +142,7 @@ namespace LiteMonitor
             if (key.Contains("Clock") && val > 10000) return; 
             if (key.Contains("Power") && val > 1000) return;
             // ★★★ [新增] 风扇转速异常过滤 ★★★
-            if (key.Contains("Fan") && val > 10000) return;
+            if ((key.Contains("Fan") || key.Contains("Pump")) && val > 10000) return;
 
             if (key == "CPU.Power" && val > RecordedMaxCpuPower) { RecordedMaxCpuPower = val; changed = true; }
             else if (key == "CPU.Clock" && val > RecordedMaxCpuClock) { RecordedMaxCpuClock = val; changed = true; }
@@ -149,8 +151,10 @@ namespace LiteMonitor
             
             // ★★★ [新增] 自动记录风扇最大值 ★★★
             else if (key == "CPU.Fan" && val > RecordedMaxCpuFan) { RecordedMaxCpuFan = val; changed = true; }
+            else if (key == "CPU.Pump" && val > RecordedMaxCpuPump) { RecordedMaxCpuPump = val; changed = true; }
             else if (key == "GPU.Fan" && val > RecordedMaxGpuFan) { RecordedMaxGpuFan = val; changed = true; }
-            else if (key == "MOBO.Fan" && val > RecordedMaxChassisFan) { RecordedMaxChassisFan = val; changed = true; }
+            else if (key == "CASE.Fan" && val > RecordedMaxChassisFan) { RecordedMaxChassisFan = val; changed = true; }
+            
 
             if (changed && (DateTime.Now - _lastAutoSave).TotalSeconds > 30)
             {
@@ -208,6 +212,7 @@ namespace LiteMonitor
                 new MonitorItemConfig { Key = "CPU.Power", SortIndex = 3, VisibleInPanel = false },
                 // ★★★ [新增] CPU Fan ★★★
                 new MonitorItemConfig { Key = "CPU.Fan",   SortIndex = 4, VisibleInPanel = false },
+                new MonitorItemConfig { Key = "CPU.Pump",  SortIndex = 5, VisibleInPanel = false },
 
                 new MonitorItemConfig { Key = "GPU.Load",  SortIndex = 10, VisibleInPanel = true, VisibleInTaskbar = true },
                 new MonitorItemConfig { Key = "GPU.Temp",  SortIndex = 11, VisibleInPanel = true },

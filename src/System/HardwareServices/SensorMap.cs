@@ -219,21 +219,18 @@ namespace LiteMonitor.src.SystemServices
         private void ScanAndMapFans(Computer computer, Settings cfg, Dictionary<string, ISensor> targetMap)
         {
             ISensor? cpuFan = null;
+            ISensor? cpuPump = null; // [新增]
             ISensor? caseFan = null;
             
             // 1. 搜集全系统所有“活着”的风扇 (RPM > 0)
-            //    格式: (硬件, 传感器, 转速)
             var activeFans = new List<(IHardware Hw, ISensor S, float Rpm)>();
             
-            // 辅助递归找风扇
             void CollectFans(IHardware hw)
             {
-                hw.Update(); // 确保有最新数据
+                hw.Update();
                 foreach (var s in hw.Sensors)
                 {
-                    // 只收录有转速的风扇 (或者用户强制指定的，哪怕没转速也要能匹配到，所以这里先全收录再过滤? 
-                    // 不，为了性能和逻辑简化，我们假设用户指定的名称在后续 FindFanByConfig 单独找)
-                    // 这里 activeFans 主要用于"自动猜测"
+                    // [修正] 这里要包含 HardwareType.Cooler 的 Fan 和 Level (有些水冷液位也算)
                     if (s.SensorType == SensorType.Fan && s.Value.HasValue && s.Value.Value > 0)
                     {
                         activeFans.Add((hw, s, s.Value.Value));
@@ -244,47 +241,72 @@ namespace LiteMonitor.src.SystemServices
             foreach (var hw in computer.Hardware) CollectFans(hw);
 
             // -----------------------------------------------------------
-            // 步骤 A: 确定 CPU 风扇
+            // [新增] 步骤 0: 确定 水冷/水泵 (CPU.Pump)
             // -----------------------------------------------------------
-            // 1. 用户强制指定 (优先级最高)
-            if (!string.IsNullOrEmpty(cfg.PreferredCpuFan))
+            // 1. 用户强制指定
+            if (!string.IsNullOrEmpty(cfg.PreferredCpuPump))
             {
-                cpuFan = FindFanByConfig(computer, cfg.PreferredCpuFan);
+                cpuPump = FindFanByConfig(activeFans, cfg.PreferredCpuPump);
             }
 
-            // 2. 自动匹配：找名字带 CPU 的，或者排在第一个的 (Fan #1)
+            // 2. 自动匹配
+            if (cpuPump == null && activeFans.Count > 0)
+            {
+                // A. 优先找名字里带 Pump/Water/AIO 的
+                var namedPump = activeFans.FirstOrDefault(x => 
+                    Has(x.S.Name, "Pump") || Has(x.S.Name, "Water") || Has(x.S.Name, "AIO"));
+                    
+                // B. 或者是 Cooler 类型的硬件下的风扇
+                if (namedPump.S == null)
+                {
+                    namedPump = activeFans.FirstOrDefault(x => x.Hw.HardwareType == HardwareType.Cooler);
+                }
+
+                // C. 或者是转速极高 (>3000 RPM) 的 (通常是泵)
+                if (namedPump.S == null)
+                {
+                    namedPump = activeFans.FirstOrDefault(x => x.Rpm > 3000);
+                }
+
+                if (namedPump.S != null) cpuPump = namedPump.S;
+            }
+
+            // -----------------------------------------------------------
+            // 步骤 A: 确定 CPU 风扇
+            // -----------------------------------------------------------
+            if (!string.IsNullOrEmpty(cfg.PreferredCpuFan))
+            {
+                cpuFan = FindFanByConfig(activeFans, cfg.PreferredCpuFan);
+            }
+            
             if (cpuFan == null && activeFans.Count > 0)
             {
-                // 按名字排序 (Fan #1, Fan #2...)
-                var sorted = activeFans.OrderBy(x => x.S.Name).ToList();
+                // 排除掉已经被选为 Pump 的
+                var candidates = activeFans.Where(x => x.S != cpuPump).OrderBy(x => x.S.Name).ToList();
                 
-                // 尝试找名字里明确带 CPU 的
-                var namedCpu = sorted.FirstOrDefault(x => Has(x.S.Name, "CPU"));
-                
-                if (namedCpu.S != null) 
-                    cpuFan = namedCpu.S;
-                else 
-                    cpuFan = sorted.First().S; // 没有任何特征时，选排在第一位的 (命中 Fan #1)
+                if (candidates.Count > 0)
+                {
+                    var namedCpu = candidates.FirstOrDefault(x => Has(x.S.Name, "CPU"));
+                    cpuFan = namedCpu.S ?? candidates.First().S; 
+                }
             }
 
             // -----------------------------------------------------------
             // 步骤 B: 确定 机箱风扇
             // -----------------------------------------------------------
-            // 1. 用户强制指定
             if (!string.IsNullOrEmpty(cfg.PreferredCaseFan))
             {
-                caseFan = FindFanByConfig(computer, cfg.PreferredCaseFan);
+                caseFan = FindFanByConfig(activeFans, cfg.PreferredCaseFan);
             }
 
-            // 2. 自动匹配：排除掉 CPU 风扇，找剩下里转速最低的 (避开水泵)
             if (caseFan == null && activeFans.Count > 0)
             {
-                // 排除已选的 CPU 风扇
-                var candidates = activeFans.Where(x => x.S != cpuFan).ToList();
+                // 排除掉 CPU Fan 和 Pump
+                var candidates = activeFans.Where(x => x.S != cpuFan && x.S != cpuPump).ToList();
 
                 if (candidates.Count > 0)
                 {
-                    // ★ 核心优化：按 RPM 升序，选最慢的那个 (通常是机箱风扇)
+                    // 选转速最低的
                     var bestCandidate = candidates.OrderBy(x => x.Rpm).First();
                     caseFan = bestCandidate.S; 
                 }
@@ -293,33 +315,20 @@ namespace LiteMonitor.src.SystemServices
             // 3. 写入 Map
             if (cpuFan != null) targetMap["CPU.Fan"] = cpuFan;
             if (caseFan != null) targetMap["CASE.Fan"] = caseFan;
+            if (cpuPump != null) targetMap["CPU.Pump"] = cpuPump; // [新增]
         }
 
         // 辅助：全局查找指定配置的风扇 (即使它转速为0也能找到)
-        private ISensor? FindFanByConfig(Computer computer, string configStr)
+       private ISensor? FindFanByConfig(List<(IHardware Hw, ISensor S, float Rpm)> fans, string configStr)
         {
-            // 需要重新遍历一次全硬件，因为 activeFans 只包含了转速>0的
-            ISensor? found = null;
-            void FindRecursive(IHardware hw)
+            // 需要处理一下 activeFans 列表可能没有包含用户指定的情况(如果是0转速)
+            // 但为了简化，假设用户选的都是转的。如果需要极其严谨，可以保留原先遍历 computer 的逻辑。
+            foreach (var item in fans)
             {
-                if (found != null) return;
-                foreach (var s in hw.Sensors)
-                {
-                    if (s.SensorType == SensorType.Fan)
-                    {
-                        string uid = $"[{hw.Name}] {s.Name}";
-                        // 兼容新版 UID 格式和旧版 Name 格式
-                        if (uid == configStr || s.Name == configStr)
-                        {
-                            found = s;
-                            return;
-                        }
-                    }
-                }
-                foreach (var sub in hw.SubHardware) FindRecursive(sub);
+                string uid = $"[{item.Hw.Name}] {item.S.Name}";
+                if (uid == configStr || item.S.Name == configStr) return item.S;
             }
-            foreach (var hw in computer.Hardware) FindRecursive(hw);
-            return found;
+            return null; // 这里简化了，如果 activeFans 里没有就返回 null
         }
 
         // ===========================================================

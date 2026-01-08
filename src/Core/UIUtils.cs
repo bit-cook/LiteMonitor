@@ -104,7 +104,7 @@ namespace LiteMonitor.src.Core
                 return $"{v:0.0}°C";
 
             // ★★★ [新增] 风扇支持 ★★★
-            if (k.Contains("FAN")) return $"{v:0} RPM";
+            if (k.Contains("FAN") || k.Contains("PUMP")) return $"{v:0} RPM";
 
             // 3. 频率类 (GHz / MHz)
             if (k.Contains("CLOCK"))
@@ -263,7 +263,7 @@ namespace LiteMonitor.src.Core
             var th = cfg.Thresholds;
 
             // Load, VRAM, Mem，CLOCK/POWER，★ FAN
-            if (k.Contains("LOAD") || k.Contains("VRAM") || k.Contains("MEM")||k.Contains("CLOCK") || k.Contains("POWER") || k.Contains("FAN"))
+            if (k.Contains("LOAD") || k.Contains("VRAM") || k.Contains("MEM")||k.Contains("CLOCK") || k.Contains("POWER") || k.Contains("FAN") && !k.Contains("PUMP"))
                 return (th.Load.Warn, th.Load.Crit);
             
             // Temp
@@ -412,6 +412,7 @@ namespace LiteMonitor.src.Core
             else if (key == "GPU.Power") max = cfg.RecordedMaxGpuPower;
             // ★★★ [新增] 风扇支持 ★★★
             else if (key == "CPU.Fan") max = cfg.RecordedMaxCpuFan;
+            else if (key == "CPU.Pump") max = cfg.RecordedMaxCpuPump;
             else if (key == "CASE.Fan") max = cfg.RecordedMaxChassisFan;
             else if (key == "GPU.Fan") max = cfg.RecordedMaxGpuFan;
 
