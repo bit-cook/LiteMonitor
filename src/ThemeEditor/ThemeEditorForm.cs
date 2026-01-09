@@ -264,7 +264,7 @@ namespace LiteMonitor.ThemeEditor
             //AddNum("界面宽度 / Width (px)", () => L.Width, v => L.Width = v);
             pageLayout.Controls.Add(new Label
             {
-                Text = "窗体圆角设置 仅win10下有效",
+                Text = "说明：窗体圆角设置暂不支持预览 且仅win10下修改圆角有效",
                 Location = new Point((int)(10 * dpiScale), y),
                 Width = (int)(350 * dpiScale),
                 ForeColor = Color.Gray,
