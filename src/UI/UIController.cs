@@ -206,18 +206,29 @@ namespace LiteMonitor
 
                 if (groupKey != currentGroupKey && currentGroupList.Count > 0)
                 {
-                    _groups.Add(new GroupLayoutInfo(currentGroupKey, currentGroupList));
+                    var gr = new GroupLayoutInfo(currentGroupKey, currentGroupList);
+                    // ★★★ 填充组标签缓存 ★★★
+                    // ★★★ 优化：Intern 动态生成的 Key，解决 Groups.HOST 重复问题 ★★★
+                    string gName = LanguageManager.T(UIUtils.Intern("Groups." + currentGroupKey));
+                    if (_cfg.GroupAliases.ContainsKey(currentGroupKey)) gName = _cfg.GroupAliases[currentGroupKey];
+                    gr.Label = gName;
+                    
+                    _groups.Add(gr);
                     currentGroupList = new List<MetricItem>();
                 }
 
                 currentGroupKey = groupKey;
 
-                string label = LanguageManager.T("Items." + cfgItem.Key);
+                // ★★★ 优化：Intern 动态生成的 Key，解决 Items.CPU.Load 重复问题 ★★★
+                string label = LanguageManager.T(UIUtils.Intern("Items." + cfgItem.Key));
                 var item = new MetricItem 
                 { 
                     Key = cfgItem.Key, 
                     Label = label 
                 };
+                // ★★★ 补充 ShortLabel (虽然竖屏不用，但保持一致性也好) ★★★
+                // ★★★ 优化：Intern 动态生成的 Key，解决 Short.CPU.Load 重复问题 ★★★
+                item.ShortLabel = LanguageManager.T(UIUtils.Intern("Short." + cfgItem.Key));
                 
                 float? val = _mon.Get(item.Key);
                 item.Value = val;
@@ -228,7 +239,13 @@ namespace LiteMonitor
 
             if (currentGroupList.Count > 0)
             {
-                _groups.Add(new GroupLayoutInfo(currentGroupKey, currentGroupList));
+                var gr = new GroupLayoutInfo(currentGroupKey, currentGroupList);
+                // ★★★ 填充最后那一组的标签 ★★★
+                // ★★★ 优化：Intern 动态生成的 Key ★★★
+                string gName = LanguageManager.T(UIUtils.Intern("Groups." + currentGroupKey));
+                 if (_cfg.GroupAliases.ContainsKey(currentGroupKey)) gName = _cfg.GroupAliases[currentGroupKey];
+                gr.Label = gName;
+                _groups.Add(gr);
             }
         }
 
@@ -280,6 +297,11 @@ namespace LiteMonitor
             { 
                 Key = cfg.Key 
             };
+            // ★★★ 核心修复：在这里填充 Label 和 ShortLabel，避免 HorizontalRenderer 每帧去查字典 ★★★
+            // ★★★ 优化：Intern 动态生成的 Key，解决 Short.CPU.Temp 重复问题 ★★★
+            item.Label = LanguageManager.T(UIUtils.Intern("Items." + cfg.Key));
+            item.ShortLabel = LanguageManager.T(UIUtils.Intern("Short." + cfg.Key));
+            
             InitMetricValue(item);
             return item;
         }

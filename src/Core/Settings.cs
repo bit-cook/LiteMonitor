@@ -120,16 +120,17 @@ namespace LiteMonitor
             if (GroupAliases != null)
             {
                 foreach (var kv in GroupAliases)
-                    LanguageManager.SetOverride("Groups." + kv.Key, kv.Value);
+                    // ★★★ 优化：Intern 动态生成的 Key，防止 duplicate strings 堆积 ★★★
+                    LanguageManager.SetOverride(UIUtils.Intern("Groups." + kv.Key), kv.Value);
             }
             if (MonitorItems != null)
             {
                 foreach (var item in MonitorItems)
                 {
                     if (!string.IsNullOrEmpty(item.UserLabel))
-                        LanguageManager.SetOverride("Items." + item.Key, item.UserLabel);
+                        LanguageManager.SetOverride(UIUtils.Intern("Items." + item.Key), item.UserLabel);
                     if (!string.IsNullOrEmpty(item.TaskbarLabel))
-                        LanguageManager.SetOverride("Short." + item.Key, item.TaskbarLabel);
+                        LanguageManager.SetOverride(UIUtils.Intern("Short." + item.Key), item.TaskbarLabel);
                 }
             }
         }

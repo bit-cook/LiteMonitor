@@ -8,6 +8,8 @@ namespace LiteMonitor
     public class GroupLayoutInfo
     {
         public string GroupName { get; set; }
+        // ★★★ 新增：缓存组标签 (防止渲染循环重复申请字符串) ★★★
+        public string Label { get; set; } = ""; 
         public Rectangle Bounds { get; set; }
         public List<MetricItem> Items { get; set; }
 

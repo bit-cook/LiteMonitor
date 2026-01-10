@@ -86,8 +86,8 @@ namespace LiteMonitor
                 foreach (var col in cols)
                 {
                     // ===== label（Top/Bottom 按最大宽度） =====
-                    string labelTop = col.Top != null ? LanguageManager.T($"Short.{col.Top.Key}") : "";
-                    string labelBottom = col.Bottom != null ? LanguageManager.T($"Short.{col.Bottom.Key}") : "";
+                    string labelTop = col.Top != null ? LanguageManager.T(UIUtils.Intern($"Short.{col.Top.Key}")) : "";
+                    string labelBottom = col.Bottom != null ? LanguageManager.T(UIUtils.Intern($"Short.{col.Bottom.Key}")) : "";
 
                     Font labelFont, valueFont;
 
@@ -216,17 +216,21 @@ namespace LiteMonitor
 
         private string GetMaxValueSample(Column col, bool isTop)
         {
-            string key = (isTop ? col.Top?.Key : col.Bottom?.Key)?.ToUpperInvariant() ??
-                         (isTop ? col.Bottom?.Key : col.Top?.Key)?.ToUpperInvariant() ?? "";
+            // ★★★ 优化：移除 ToUpperInvariant() 分配，改用忽略大小写的比较 ★★★
+            string key = (isTop ? col.Top?.Key : col.Bottom?.Key) ??
+                         (isTop ? col.Bottom?.Key : col.Top?.Key) ?? "";
 
-            // ★★★ 简单匹配，返回常量 ★★★
-            if (key.Contains("CLOCK")) return MAX_VALUE_CLOCK;
-            if (key.Contains("POWER")) return MAX_VALUE_POWER;
+            // ★★★ 简单匹配，使用 IndexOf 替换 Contains ★★★
+            if (key.IndexOf("CLOCK", StringComparison.OrdinalIgnoreCase) >= 0) return MAX_VALUE_CLOCK;
+            if (key.IndexOf("POWER", StringComparison.OrdinalIgnoreCase) >= 0) return MAX_VALUE_POWER;
 
             bool isIO =
-                key.Contains("READ") || key.Contains("WRITE") ||
-                key.Contains("UP") || key.Contains("DOWN") ||
-                key.Contains("DAYUP") || key.Contains("DAYDOWN");
+                key.IndexOf("READ", StringComparison.OrdinalIgnoreCase) >= 0 || 
+                key.IndexOf("WRITE", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                key.IndexOf("UP", StringComparison.OrdinalIgnoreCase) >= 0 || 
+                key.IndexOf("DOWN", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                key.IndexOf("DAYUP", StringComparison.OrdinalIgnoreCase) >= 0 || 
+                key.IndexOf("DAYDOWN", StringComparison.OrdinalIgnoreCase) >= 0;
 
             return isIO ? MAX_VALUE_IO : MAX_VALUE_NORMAL;
         }

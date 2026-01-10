@@ -47,7 +47,9 @@ namespace LiteMonitor
         private static void DrawItem(Graphics g, MetricItem it, Rectangle rc, Theme t)
         {
             // 原版写法：优先用 Short.xx
-            string label = LanguageManager.T($"Short.{it.Key}");
+            // ★★★ 优化：直接使用缓存的 ShortLabel，如果没有则回退到 Label ★★★
+            string label = !string.IsNullOrEmpty(it.ShortLabel) ? it.ShortLabel : it.Label;
+            if (string.IsNullOrEmpty(label)) label = it.Key;
 
             // === 使用 MetricItem 统一格式化 ===
             //去除网络和磁盘的"\s"，小数点智能显示

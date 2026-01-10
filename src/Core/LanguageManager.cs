@@ -9,7 +9,7 @@ namespace LiteMonitor.src.Core
     {
         public static string CurrentLang { get; private set; } = "zh";
         private static Dictionary<string, string> _texts = new();
-        
+
         // ★★★ 1. 新增：用户自定义覆盖字典 ★★★
         private static Dictionary<string, string> _overrides = new();
 
@@ -27,9 +27,9 @@ namespace LiteMonitor.src.Core
         {
             // [优化] 如果请求的语言与当前已加载语言一致，且字典不为空，则跳过加载
             // 使用 OrdinalIgnoreCase 忽略大小写差异 (如 "zh" vs "ZH")
-            if (string.Equals(CurrentLang, langCode, StringComparison.OrdinalIgnoreCase) && _texts.Count > 0) 
+            if (string.Equals(CurrentLang, langCode, StringComparison.OrdinalIgnoreCase) && _texts.Count > 0)
             {
-                return; 
+                return;
             }
 
             try
@@ -55,11 +55,11 @@ namespace LiteMonitor.src.Core
         public static void SetOverride(string key, string value)
         {
             if (string.IsNullOrEmpty(key)) return;
-            if (string.IsNullOrEmpty(value)) 
+            if (string.IsNullOrEmpty(value))
             {
                 if (_overrides.ContainsKey(key)) _overrides.Remove(key);
             }
-            else 
+            else
             {
                 _overrides[key] = value;
             }
@@ -86,11 +86,13 @@ namespace LiteMonitor.src.Core
             return GetOriginal(key);
         }
 
+        // ★★★ 优化: Intern 驻留 Key 字符串，防止 Items.CPU.XXX 重复 ★★★
         private static Dictionary<string, string> Flatten(JsonElement element, string prefix = "")
         {
             var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             foreach (var prop in element.EnumerateObject())
             {
+                // 同样驻留 Key
                 string fullKey = string.IsNullOrEmpty(prefix) ? prop.Name : $"{prefix}.{prop.Name}";
                 if (prop.Value.ValueKind == JsonValueKind.Object)
                 {
@@ -99,7 +101,7 @@ namespace LiteMonitor.src.Core
                 }
                 else
                 {
-                    dict[fullKey] = prop.Value.GetString() ?? "";
+                    dict[UIUtils.Intern(fullKey)] = prop.Value.GetString() ?? "";
                 }
             }
             return dict;

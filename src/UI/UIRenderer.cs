@@ -72,8 +72,8 @@ namespace LiteMonitor
             UIUtils.FillRoundRect(g, gr.Bounds, t.Layout.GroupRadius, ThemeManager.ParseColor(t.Color.GroupBackground));
 
             // 绘制组标题 (CPU, GPU...)
-            string label = LanguageManager.T($"Groups.{gr.GroupName}");
-            if (string.IsNullOrEmpty(label)) label = gr.GroupName;
+            // ★★★ 优化：直接使用缓存的 gr.Label，不再每帧调用 LanguageManager.T ★★★
+            string label = string.IsNullOrEmpty(gr.Label) ? gr.GroupName : gr.Label;
 
             int titleH = t.FontGroup.Height;
             int titleY = gr.Bounds.Y - t.Layout.GroupTitleOffset - titleH;
@@ -93,8 +93,8 @@ namespace LiteMonitor
             if (it.Bounds == Rectangle.Empty) return;
 
             // Label (左对齐)
-            string label = LanguageManager.T($"Items.{it.Key}"); 
-            if (label == $"Items.{it.Key}") label = it.Label; // Fallback
+            // ★★★ 优化：直接使用缓存的 it.Label ★★★
+            string label = string.IsNullOrEmpty(it.Label) ? it.Key : it.Label;
 
             TextRenderer.DrawText(g, label, t.FontItem, it.LabelRect,
                 ThemeManager.ParseColor(t.Color.TextPrimary),
@@ -122,7 +122,8 @@ namespace LiteMonitor
             if (it.Bounds == Rectangle.Empty) return;
 
             // Label (居中顶部)
-            string label = LanguageManager.T($"Items.{it.Key}");
+            // ★★★ 优化：直接使用缓存的 it.Label ★★★
+            string label = string.IsNullOrEmpty(it.Label) ? it.Key : it.Label;
             
             TextRenderer.DrawText(g, label, t.FontItem, it.LabelRect,
                 ThemeManager.ParseColor(t.Color.TextPrimary),

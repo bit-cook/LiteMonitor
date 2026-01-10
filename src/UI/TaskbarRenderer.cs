@@ -84,7 +84,10 @@ namespace LiteMonitor
 
         private static void DrawItem(Graphics g, MetricItem item, Rectangle rc, bool light)
         {
-            string label = LanguageManager.T($"Short.{item.Key}");
+            // ★★★ 优化：直接使用缓存的 ShortLabel，避免每帧生成 Key 和查询字典 ★★★
+            string label = !string.IsNullOrEmpty(item.ShortLabel) ? item.ShortLabel : item.Label;
+            if (string.IsNullOrEmpty(label)) label = item.Key;
+
             string value = item.GetFormattedText(true);
 
             // 直接使用缓存的字体，不再 new Font
