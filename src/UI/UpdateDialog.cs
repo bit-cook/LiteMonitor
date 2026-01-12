@@ -6,6 +6,7 @@ using System.Net.Http.Headers; // 引入头文件处理
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
+using System.Security.Principal;
 
 namespace LiteMonitor
 {
@@ -254,21 +255,55 @@ namespace LiteMonitor
                 return;
             }
 
+            var psi = new ProcessStartInfo
+            {
+                FileName = updater,
+                Arguments = $"\"{_targetZipPath}\"", // 传递 ZIP 路径
+                WorkingDirectory = AppContext.BaseDirectory // 显式指定工作目录
+            };
+
+            // ★★★ 智能提权逻辑 ★★★
+            if (IsRunningAsAdmin())
+            {
+                // 已经是管理员，直接继承权限，无需再弹窗
+                psi.UseShellExecute = false; 
+            }
+            else
+            {
+                // 普通用户，申请提权
+                psi.UseShellExecute = true;
+                psi.Verb = "runas"; 
+            }
+
             try
             {
-                Process.Start(new ProcessStartInfo
-                {
-                    FileName = updater,
-                    Arguments = $"\"{_targetZipPath}\"", // 确保路径带引号
-                    UseShellExecute = true,
-                    Verb = "runas" // 请求管理员权限
-                });
-
-                Application.Exit();
+                Process.Start(psi);
+                Application.Exit(); // 启动成功，退出主程序
+            }
+            catch (System.ComponentModel.Win32Exception ex) when (ex.NativeErrorCode == 1223)
+            {
+                // ★★★ 捕获 Error 1223: 操作已被用户取消 ★★★
+                // 用户在 UAC 弹窗点了“否”，我们要静默处理，不要弹错误窗
+                // 恢复界面状态，允许用户再次点击
+                btnUpdate.Enabled = true;
+                btnUpdate.Text = "立即更新";
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"启动更新程序失败：\n{ex.Message}", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                // 恢复按钮状态
+                btnUpdate.Enabled = true;
+                btnUpdate.Text = "重试";
+            }
+        }
+
+        // 辅助方法：检查当前是否为管理员
+        private bool IsRunningAsAdmin()
+        {
+            using (var identity = WindowsIdentity.GetCurrent())
+            {
+                var principal = new WindowsPrincipal(identity);
+                return principal.IsInRole(WindowsBuiltInRole.Administrator);
             }
         }
 

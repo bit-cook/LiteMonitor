@@ -314,24 +314,69 @@ namespace LiteMonitor
             // Save(); 
         }
 
-        // 辅助：普通补全逻辑（用于已经是新版后的后续小更新）
+        // ★★★ 优化方案 v2：智能跟随邻居插队 (Smart Neighbor Follow) ★★★
         private void CheckAndAppendMissingItems()
         {
             var temp = new Settings();
             temp.InitDefaultItems();
             
-            // 计算追加的起始 ID（防止冲突）
-            int maxSort = MonitorItems.Count > 0 ? MonitorItems.Max(x => x.SortIndex) : 0;
-            int maxTaskbarSort = MonitorItems.Count > 0 ? MonitorItems.Max(x => x.TaskbarSortIndex) : 0;
+            // 1. 找出用户缺失的新项
+            var newItems = temp.MonitorItems
+                .Where(std => !MonitorItems.Any(usr => usr.Key.Equals(std.Key, StringComparison.OrdinalIgnoreCase)))
+                .OrderBy(std => std.SortIndex) // 按官方顺序一个个处理
+                .ToList();
 
-            foreach (var stdItem in temp.MonitorItems)
+            if (newItems.Count == 0) return;
+
+            bool listChanged = false;
+
+            foreach (var newItem in newItems)
             {
-                if (!MonitorItems.Any(x => x.Key.Equals(stdItem.Key, StringComparison.OrdinalIgnoreCase)))
+                // ==================================================
+                // 步骤 A：处理主面板 (SortIndex) —— 腾位置
+                // ==================================================
+                // 凡是位置被占了（或在它后面的），统统后移一位
+                var conflictingPanelItems = MonitorItems.Where(x => x.SortIndex >= newItem.SortIndex).ToList();
+                foreach (var item in conflictingPanelItems) item.SortIndex++;
+
+                // ==================================================
+                // 步骤 B：处理任务栏 (TaskbarSortIndex) —— 找大哥
+                // ==================================================
+                int targetTaskbarIndex = 0;
+
+                // 1. 尝试找到这位新人在主面板里的“大哥”（前一个邻居）
+                // 比如 FPS(21) 的大哥可能是 MEM.Load(20)
+                var predecessor = MonitorItems
+                    .Where(x => x.SortIndex < newItem.SortIndex) // 找排在它前面的
+                    .OrderByDescending(x => x.SortIndex)         // 离它最近的那个
+                    .FirstOrDefault();
+
+                if (predecessor != null)
                 {
-                    stdItem.SortIndex = ++maxSort;
-                    stdItem.TaskbarSortIndex = ++maxTaskbarSort;
-                    MonitorItems.Add(stdItem);
+                    // 2. 如果找到了大哥，就插在大哥后面
+                    targetTaskbarIndex = predecessor.TaskbarSortIndex + 1;
                 }
+                else
+                {
+                    // 3. 如果没大哥（说明它是新列表的老大），那就插在最前面 (0)
+                    targetTaskbarIndex = 0;
+                }
+
+                // 4. 让任务栏里挡路的人也统统后移
+                var conflictingTaskbarItems = MonitorItems.Where(x => x.TaskbarSortIndex >= targetTaskbarIndex).ToList();
+                foreach (var item in conflictingTaskbarItems) item.TaskbarSortIndex++;
+
+                // 5. 落座
+                newItem.TaskbarSortIndex = targetTaskbarIndex;
+
+                MonitorItems.Add(newItem);
+                listChanged = true;
+            }
+
+            // 收尾：重新整理一下 List 的物理顺序
+            if (listChanged)
+            {
+                MonitorItems = MonitorItems.OrderBy(x => x.SortIndex).ToList();
             }
         }
 
