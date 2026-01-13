@@ -45,8 +45,9 @@ namespace LiteMonitor.src.UI.SettingsPage
             _container.Controls.Clear();
 
             CreateBehaviorCard();
-            CreateWebCard(); // ★★★ 新增：网页显示分组 ★★★
+            
             CreateAppearanceCard();
+            CreateWebCard(); // ★★★ 新增：网页显示分组 ★★★
             
 
             _container.ResumeLayout();
