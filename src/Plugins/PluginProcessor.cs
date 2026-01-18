@@ -160,29 +160,6 @@ namespace LiteMonitor.src.Plugins
                             }
                             val = result;
                         }
-                        // Priority 2: Legacy Thresholds Array
-                        else if (t.Thresholds != null)
-                        {
-                            // 1. Determine Interval Index
-                            int index = 0;
-                            for (int i = 0; i < t.Thresholds.Count; i++)
-                            {
-                                if (numVal >= t.Thresholds[i]) index = i + 1;
-                                else break;
-                            }
-
-                            // 2. Map to Output Value
-                            if (t.Values != null && index < t.Values.Count)
-                            {
-                                val = t.Values[index];
-                            }
-                            else
-                            {
-                                // Default Fallback Logic
-                                if (t.Thresholds.Count == 1) val = (index == 0) ? "0" : "2";
-                                else val = Math.Min(index, 2).ToString();
-                            }
-                        }
                         else
                         {
                              val = "0"; // Safe default

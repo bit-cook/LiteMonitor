@@ -171,14 +171,6 @@ namespace LiteMonitor.src.Plugins
         [JsonPropertyName("map")]
         public Dictionary<string, string>? Map { get; set; }
 
-        // For threshold_switch
-        [JsonPropertyName("thresholds")]
-        public List<double>? Thresholds { get; set; }
-
-        // [New] For threshold_switch explicit mapping (e.g. ["0", "2"] for Safe/Crit only)
-        [JsonPropertyName("values")]
-        public List<string>? Values { get; set; }
-
         // [New] Simplified Key-Value Map for Thresholds (e.g. { "0": "0", "80": "2" })
         [JsonPropertyName("value_map")]
         public Dictionary<string, string>? ValueMap { get; set; }

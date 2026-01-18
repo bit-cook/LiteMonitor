@@ -121,9 +121,19 @@
     "map": { "200": "✅", "404": "❌" }
   },
   {
-      "var": "final_display",
-      "source": "template",// 模板字符串变量
-      "function": "resolve_template",
+    "var": "final_display",
+    "source": "template",// 模板字符串变量
+    "function": "resolve_template",
+  },
+  {
+    "var": "color_status",         // 目标变量
+    "source": "cpu_temp",          // 源数据
+    "function": "threshold_switch",
+    "value_map": {                 // [推荐] 数值映射表
+        "0": "0",                  // >=0 -> 0 (绿)
+        "60": "1",                 // >=60 -> 1 (黄)
+        "80": "2"                  // >=80 -> 2 (红)
+    }
   }
 ]
 ```
@@ -138,10 +148,33 @@
     "label": "{{city_display ?? city ?? auto_city}}天气", // 强烈推荐使用 Fallback 语法
     "short_label": "{{city_display ?? city ?? auto_city}}",
     "format_val": "{{temp}}°C",
+    "color": "{{color_status}}", // [新] 绑定颜色状态变量 (0=绿, 1=黄, 2=红)
     "unit": ""
   }
 ]
 ```
+
+#### 颜色状态说明 (Color State)
+通过 `color` 字段，你可以控制监控项的颜色。
+*   `"0"`: **安全/绿色** (ValueSafe / BarLow)
+*   `"1"`: **警告/黄色** (ValueWarn / BarMid)
+*   `"2"`: **危险/红色** (ValueCrit / BarHigh)
+
+推荐在 `process` 中使用 `threshold_switch` 函数计算颜色状态。
+
+#### `threshold_switch` 函数详解
+根据数值大小，映射为对应的状态值。
+
+**用法 1：value_map (推荐)**
+定义“数值起点 -> 状态值”的映射关系。系统会根据当前数值，找到符合条件的最大起点。
+```json
+"value_map": {
+  "-1000": "0",  // 跌幅区间 (>= -1000): 绿色
+  "0": "2"       // 涨幅区间 (>= 0): 红色
+}
+```
+
+---
 
 #### 最佳实践：Label 的 Fallback 机制
 在异步加载场景中，某些变量（如 `city_display`）可能需要等待 API 请求完成后才有值。
