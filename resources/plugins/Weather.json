@@ -1,8 +1,8 @@
 {
   "id": "Weather",
   "meta": {
-    "name": "实时天气",
-    "version": "1.1.0",
+    "name": "实时天气监控",
+    "version": "1.0",
     "author": "LiteMonitor",
     "description": "实时天气插件，基于IP自动定位，获取高精度天气数据，支持多种显示方式"
   },

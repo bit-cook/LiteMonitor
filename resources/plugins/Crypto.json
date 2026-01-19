@@ -1,8 +1,8 @@
 {
   "id": "Crypto",
   "meta": {
-    "name": "加密货币",
-    "version": "1.0.0",
+    "name": "加密货币行情监控",
+    "version": "1.0",
     "author": "LiteMonitor",
     "description": "获取实时加密货币价格，支持所有币种，支持币种代码BTC或交易对BTCUSDT"
   },

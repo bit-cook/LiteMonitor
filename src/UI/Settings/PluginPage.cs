@@ -43,6 +43,9 @@ namespace LiteMonitor.src.UI.SettingsPage
 
         private void RebuildUI()
         {
+            // ★★★ Fix: Save Scroll Position to prevent jumping to top ★★★
+            int savedScroll = _container.VerticalScroll.Value;
+
             _container.SuspendLayout();
             ClearAndDispose(_container.Controls);
 
@@ -87,6 +90,13 @@ namespace LiteMonitor.src.UI.SettingsPage
             }
             
             _container.ResumeLayout();
+
+            // ★★★ Fix: Restore Scroll Position ★★★
+            if (savedScroll > 0)
+            {
+                _container.PerformLayout(); // Ensure scroll range is updated
+                _container.AutoScrollPosition = new Point(0, savedScroll);
+            }
         }
 
         private void CreatePluginGroup(PluginInstanceConfig inst, PluginTemplate tmpl, bool isDefault)

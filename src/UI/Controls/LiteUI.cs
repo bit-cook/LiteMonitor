@@ -98,6 +98,10 @@ namespace LiteMonitor.src.UI.Controls
                 range.Warn = inputWarn.ValueDouble;
                 range.Crit = inputCrit.ValueDouble;
             });
+            page.RegisterRefresh(() => {
+                inputWarn.Inner.Text = range.Warn.ToString();
+                inputCrit.Inner.Text = range.Crit.ToString();
+            });
 
             rightBox.Controls.Add(inputWarn);
             rightBox.Controls.Add(arrow);
@@ -257,7 +261,7 @@ namespace LiteMonitor.src.UI.Controls
                 ctrl.Location = new Point(this.Width - ctrl.Width, mid - ctrl.Height / 2);
             };
             this.Paint += (s, e) => {
-                using(var p = new Pen(Color.FromArgb(225, 225, 225))) 
+                using(var p = new Pen(Color.FromArgb(240, 240, 240))) 
                     e.Graphics.DrawLine(p, 0, Height-1, Width, Height-1);
             };
         }
@@ -460,6 +464,16 @@ namespace LiteMonitor.src.UI.Controls
         public override string ToString() => Text;
     }
 
+    public class NoScrollComboBox : ComboBox
+    {
+        protected override void WndProc(ref Message m)
+        {
+            // WM_MOUSEWHEEL = 0x020A
+            if (m.Msg == 0x020A && !this.DroppedDown) return;
+            base.WndProc(ref m);
+        }
+    }
+
     public class LiteComboBox : Panel 
     { 
         public ComboBox Inner; 
@@ -470,7 +484,7 @@ namespace LiteMonitor.src.UI.Controls
             this.BackColor = Color.White; 
             this.Padding = new Padding(1); 
             
-            Inner = new ComboBox 
+            Inner = new NoScrollComboBox 
             { 
                 DropDownStyle = ComboBoxStyle.DropDownList, 
                 FlatStyle = FlatStyle.Flat, 

@@ -27,6 +27,7 @@ namespace LiteMonitor.src.UI.SettingsPage
             
             // Deferred binding: Register action to read value on Save
             page.RegisterDelaySave(() => set(chk.Checked));
+            page.RegisterRefresh(() => chk.Checked = get());
             
             group.AddItem(new LiteSettingsItem(LanguageManager.T(titleKey), chk));
             return chk;
@@ -42,6 +43,7 @@ namespace LiteMonitor.src.UI.SettingsPage
 
             // Deferred binding
             page.RegisterDelaySave(() => set(input.Inner.Text));
+            page.RegisterRefresh(() => input.Inner.Text = get());
             
             group.AddItem(new LiteSettingsItem(LanguageManager.T(titleKey), input));
             return input;
@@ -61,6 +63,7 @@ namespace LiteMonitor.src.UI.SettingsPage
                 if (int.TryParse(input.Inner.Text, out int val))
                     set(val);
             });
+            page.RegisterRefresh(() => input.Inner.Text = get().ToString());
             
             group.AddItem(new LiteSettingsItem(LanguageManager.T(titleKey), input));
             return input;
@@ -80,6 +83,7 @@ namespace LiteMonitor.src.UI.SettingsPage
                 if (double.TryParse(input.Inner.Text, out double val))
                     set(val);
             });
+            page.RegisterRefresh(() => input.Inner.Text = get().ToString());
             
             group.AddItem(new LiteSettingsItem(LanguageManager.T(titleKey), input));
             return input;
@@ -95,6 +99,7 @@ namespace LiteMonitor.src.UI.SettingsPage
 
             // Deferred binding
             page.RegisterDelaySave(() => set(input.HexValue));
+            page.RegisterRefresh(() => input.HexValue = get());
             
             group.AddItem(new LiteSettingsItem(LanguageManager.T(titleKey), input));
             return input;
@@ -119,6 +124,12 @@ namespace LiteMonitor.src.UI.SettingsPage
 
             // Deferred binding
             page.RegisterDelaySave(() => set(cmb.Text));
+            page.RegisterRefresh(() => 
+            {
+                string current = get();
+                if (cmb.Items.Contains(current)) cmb.SelectedItem = current;
+                else if (cmb.Items.Count > 0) cmb.SelectedIndex = 0;
+            });
             
             // Auto-width logic
             AttachAutoWidth(cmb);
@@ -140,6 +151,11 @@ namespace LiteMonitor.src.UI.SettingsPage
 
             // Deferred binding
             page.RegisterDelaySave(() => set(cmb.SelectedIndex));
+            page.RegisterRefresh(() => 
+            {
+                int idx = get();
+                if (idx >= 0 && idx < cmb.Items.Count) cmb.SelectedIndex = idx;
+            });
             AttachAutoWidth(cmb);
 
             group.AddItem(new LiteSettingsItem(LanguageManager.T(titleKey), cmb));
@@ -171,6 +187,7 @@ namespace LiteMonitor.src.UI.SettingsPage
             cmb.SelectValue(get());
             // Deferred binding
             page.RegisterDelaySave(() => set(cmb.SelectedValue));
+            page.RegisterRefresh(() => cmb.SelectValue(get()));
             AttachAutoWidth(cmb);
 
             group.AddItem(new LiteSettingsItem(title, cmb));

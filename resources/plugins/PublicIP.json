@@ -1,8 +1,8 @@
 {
   "id": "PublicIP",
   "meta": {
-    "name": "公网IP",
-    "version": "1.0.0",
+    "name": "公网IP显示",
+    "version": "1.0",
     "author": "LiteMonitor",
     "description": "公网IP插件，获取当前网络的公网IPv4地址"
   },

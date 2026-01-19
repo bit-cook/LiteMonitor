@@ -100,7 +100,7 @@
     "WebServerPort": "网页端口",
     "Plugin.MonitorHint": "如需修改显示名称、单位或排序，请前往 [监控项显示] 页面",
     "OpenWeb": "打开网页",
-    "WebServerTip": "⚠️说明：开启网页版显示后，手机和电脑可通过“内网IP:端口”打开网页查看监控数据。",
+    "WebServerTip": "⚠️说明：开启网页版显示后，手机可通过“内网IP:端口”打开网页查看监控数据。",
 
     "Appearance": "外观设置",
     "Theme": "主题",

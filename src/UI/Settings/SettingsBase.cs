@@ -21,6 +21,8 @@ namespace LiteMonitor.src.UI.SettingsPage
         
         // ★★★ Staging Mechanism for Deferred Save ★★★
         protected List<Action> _saveActions = new List<Action>();
+        // ★★★ Refresh Mechanism for Deferred Load ★★★
+        protected List<Action> _refreshActions = new List<Action>();
 
         public static readonly Color GlobalBackColor = Color.FromArgb(249, 249, 249); 
 
@@ -43,10 +45,24 @@ namespace LiteMonitor.src.UI.SettingsPage
             _saveActions.Add(action);
         }
 
+        public void RegisterRefresh(Action action)
+        {
+            _refreshActions.Add(action);
+        }
+
         public virtual void OnShow()
         {
             // Base implementation can be empty or used for common logic
             // Note: Do NOT clear _saveActions here, as OnShow is called even when _isLoaded is true.
+            
+            // Execute refresh actions to ensure UI reflects the latest Config
+            if (Config != null)
+            {
+                foreach (var action in _refreshActions)
+                {
+                    action.Invoke();
+                }
+            }
         }
 
         public virtual void Save()
