@@ -192,7 +192,7 @@ namespace LiteMonitor.src.UI.SettingsPage
             var initialFonts = new List<string> { "Microsoft YaHei UI" };
             _cbFont = (LiteComboBox)group.AddCombo(this, "Menu.TaskbarFont", initialFonts, 
                 () => Config?.TaskbarFontFamily ?? "Microsoft YaHei UI", 
-                v => { if(Config!=null) Config.TaskbarFontFamily = v; }
+                v => { if(Config!=null && Config.TaskbarCustomLayout) Config.TaskbarFontFamily = v; }
             );
             AddL(_cbFont);
 
@@ -200,7 +200,7 @@ namespace LiteMonitor.src.UI.SettingsPage
 
             AddL(group.AddDouble(this, "Menu.TaskbarFontSize", "pt", 
                 () => Config?.TaskbarFontSize ?? 9f, 
-                v => { if(Config!=null) Config.TaskbarFontSize = (float)v; }));
+                v => { if(Config!=null && Config.TaskbarCustomLayout) Config.TaskbarFontSize = (float)v; }));
             
             AddL(group.AddToggle(this, "Menu.TaskbarFontBold", 
                 () => Config?.TaskbarFontBold ?? false, 
@@ -208,15 +208,15 @@ namespace LiteMonitor.src.UI.SettingsPage
 
             AddL(group.AddInt(this, "Menu.TaskbarItemSpacing", "px", 
                 () => Config?.TaskbarItemSpacing ?? 10, 
-                v => { if(Config!=null) Config.TaskbarItemSpacing = v; }));
+                v => { if(Config!=null && Config.TaskbarCustomLayout) Config.TaskbarItemSpacing = v; }));
             
             AddL(group.AddInt(this, "Menu.TaskbarInnerSpacing", "px", 
                 () => Config?.TaskbarInnerSpacing ?? 4, 
-                v => { if(Config!=null) Config.TaskbarInnerSpacing = v; }));
+                v => { if(Config!=null && Config.TaskbarCustomLayout) Config.TaskbarInnerSpacing = v; }));
             
             AddL(group.AddInt(this, "Menu.TaskbarVerticalPadding", "px", 
                 () => Config?.TaskbarVerticalPadding ?? 0, 
-                v => { if(Config!=null) Config.TaskbarVerticalPadding = v; }));
+                v => { if(Config!=null && Config.TaskbarCustomLayout) Config.TaskbarVerticalPadding = v; }));
 
             AddGroupToPage(group);
         }

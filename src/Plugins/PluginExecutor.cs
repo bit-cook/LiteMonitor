@@ -314,7 +314,9 @@ namespace LiteMonitor.src.Plugins
                     var root = doc.RootElement;
                     foreach (var kv in extractRules)
                     {
-                        context[kv.Key] = PluginProcessor.ExtractJsonValue(root, kv.Value);
+                        // Support dynamic paths like "rates.{{to}}"
+                        string resolvedPath = PluginProcessor.ResolveTemplate(kv.Value, context);
+                        context[kv.Key] = PluginProcessor.ExtractJsonValue(root, resolvedPath);
                     }
                 }
             }
