@@ -6,13 +6,18 @@
     "HOST": "🖥️Host",
     "DISK": "💽Disk",
     "NET": "🌐Net",
-    "DATA": "📈Traffic"
+    "DATA": "📈Traffic",
+    "BAT": "🔋Battery"
   },
   "Items": {
     "DASH.HOST": "Hostname",
     "DASH.Time": "Time",
     "DASH.IP": "Local IP",
     "DASH.Uptime": "Uptime",
+    "BAT.Percent": "Battery",
+    "BAT.Power": "Bat Pwr",
+    "BAT.Voltage": "Bat Volt",
+    "BAT.Current": "Bat Curr",
     "CPU.Load": "CPU Usage",
     "CPU.Temp": "CPU Temp",
     "CPU.Clock": "CPU Clock",
@@ -64,7 +69,11 @@
     "NET.Up": "🔼",
     "NET.Down": "🔽",
     "DATA.DayUp": "⏫",
-    "DATA.DayDown": "⏬"
+    "DATA.DayDown": "⏬",
+    "BAT.Percent": "BAT",
+    "BAT.Power": "BPWR",
+    "BAT.Voltage": "BVOL",
+    "BAT.Current": "BCUR"
   },
   "Menu": {
         "__Comment_Global__": "--- Global ---",

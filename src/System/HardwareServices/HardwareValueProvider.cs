@@ -298,6 +298,94 @@ namespace LiteMonitor.src.SystemServices
                         result = _fpsCounter.GetFps();
                         break;
 
+
+
+                    // ★★★ [修改] 电池模拟测试逻辑 (基于主流 100W PD快充笔记本模型) ★★★
+                    case "BAT.Percent":
+                    case "BAT.Power":
+                    case "BAT.Voltage":
+                    case "BAT.Current":
+                        bool _simulateBattery = true;
+                        if (_simulateBattery) // 确保你有这个变量，或者直接写 true
+                        {
+                            var now = DateTime.Now;
+                            int sec = now.Second; // 0-59
+
+                            // === 状态定义 ===
+                            // 前 30 秒：模拟 [高负载放电] (游戏/渲染中)
+                            // 后 30 秒：模拟 [PD快充回血] (连接 100W 充电器)
+                            bool isCharging = sec >= 30;
+                            
+                            // 必须同步更新全局状态，否则 UI 图标不跳变
+                            UIUtils.IsBatteryCharging = isCharging;
+
+                            // 1. 计算基础电压 (4芯锂电池: 14.8V - 16.8V)
+                            // 放电时电压下降，充电时电压升高
+                            float voltage = isCharging 
+                                ? 15.5f + ((sec - 30) * 0.05f)  // 充电：电压逐渐爬升 (15.5 -> 17.0V)
+                                : 16.8f - (sec * 0.06f);        // 放电：电压逐渐掉落 (16.8 -> 15.0V)
+
+                            // 2. 计算功耗 (W)
+                            // 放电：正值，模拟 25W-45W 波动
+                            // 充电：负值，模拟 65W-90W 快充波动
+                            float power;
+                            if (isCharging)
+                            {
+                                // 模拟 PD 协商震荡：-65W 到 -85W 之间波动
+                                power = -65.0f - (sec % 5) * 4.0f; 
+                            }
+                            else
+                            {
+                                // 模拟 CPU 负载波动：25W 到 40W
+                                power = 25.0f + (sec % 3) * 5.0f; 
+                            }
+
+                            // 3. 计算电流 (A) = 功率 / 电压
+                            float current = power / voltage;
+
+                            // 4. 计算百分比 (%)
+                            // 为了方便 UI 测试，让它在 30秒内 跑完 0-100%
+                            float percent;
+                            if (isCharging)
+                                percent = (sec - 30) * (100.0f / 30.0f); // 0 -> 100
+                            else
+                                percent = 100.0f - (sec * (100.0f / 30.0f)); // 100 -> 0
+
+                            // === 赋值 ===
+                            if (key == "BAT.Percent") result = Math.Clamp(percent, 0f, 100f);
+                            else if (key == "BAT.Power") result = power;
+                            else if (key == "BAT.Voltage") result = voltage;
+                            else if (key == "BAT.Current") result = current;
+
+                            break; // 模拟模式下直接跳出，不查 SensorMap
+                        }
+
+
+
+                        // 真实硬件逻辑
+                        lock (_lock) 
+                        { 
+                            // [新增] 主动检测充电状态 (无论当前请求哪个电池指标，都尝试读取功耗/电流来更新状态)
+                            // 这样即使只显示电压，也能正确判断是否在充电
+                            if (_sensorMap.TryGetSensor("BAT.Power", out var pSensor) && pSensor.Value.HasValue)
+                            {
+                                UIUtils.IsBatteryCharging = pSensor.Value.Value < 0;
+                            }
+                            else if (_sensorMap.TryGetSensor("BAT.Current", out var cSensor) && cSensor.Value.HasValue)
+                            {
+                                UIUtils.IsBatteryCharging = cSensor.Value.Value < 0; // 电流负值表示充电
+                            }
+
+                            if (_sensorMap.TryGetSensor(key, out var s) && s.Value.HasValue) 
+                            {
+                                result = s.Value.Value;
+                            }
+                        }
+                        break;
+
+
+
+
                     // 默认分支：处理模糊匹配 (StartsWith/Contains)
                     default:
                         // 3. 网络与磁盘

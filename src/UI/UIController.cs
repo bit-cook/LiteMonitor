@@ -19,6 +19,7 @@ namespace LiteMonitor
         private UILayout _layout;
         private bool _layoutDirty = true;
         private bool _dragging = false;
+        private string _lastLayoutSignature = "";
 
         private List<GroupLayoutInfo> _groups = new();
         private List<Column> _hxColsHorizontal = new();
@@ -122,7 +123,9 @@ namespace LiteMonitor
             if (_cfg.HorizontalMode)
             {
                 _hxLayout ??= new HorizontalLayout(t, _form.Width, LayoutMode.Horizontal);
-                
+
+                // [通用方案] 动态检测是否需要重新计算布局
+                // 移至 Tick() 中低频检查，避免 Render 高频调用
                 if (_layoutDirty)
                 {
                     int h = _hxLayout.Build(_hxColsHorizontal);
@@ -212,6 +215,18 @@ namespace LiteMonitor
 
                 // 驱动 DashboardService 更新
                 InfoService.Instance.Update();
+
+                // [优化] 在数据更新后检查布局签名 (每秒一次)
+                // 只有当充电状态等导致样本变化时，才标记 Dirty
+                if (_cfg.HorizontalMode && _hxLayout != null)
+                {
+                    string currentLayoutSig = _hxLayout.GetLayoutIsChage(_hxColsHorizontal);
+                    if (currentLayoutSig != _lastLayoutSignature)
+                    {
+                        _lastLayoutSignature = currentLayoutSig;
+                        _layoutDirty = true;
+                    }
+                }
 
                 _form.Invalidate();   
             }
@@ -320,30 +335,38 @@ namespace LiteMonitor
 
             // 2. 排序 (优化：先按组聚类，防止新插件跑到末尾)
             bool useTaskbarSort = forTaskbar || _cfg.HorizontalFollowsTaskbar;
-            var items = query
-                .GroupBy(x => x.UIGroup)
-                .OrderBy(g => g.Min(item => useTaskbarSort ? item.TaskbarSortIndex : item.SortIndex))
-                .SelectMany(g => g.OrderBy(item => useTaskbarSort ? item.TaskbarSortIndex : item.SortIndex))
-                .ToList();
-            var validItems = new List<MonitorItemConfig>();
+            List<MonitorItemConfig> items;
 
-            // [新增] 二次过滤：横条模式不显示 IP
-            foreach (var item in items)
+            if (useTaskbarSort)
             {
-                validItems.Add(item);
+                // [Taskbar Mode] Allow cross-group sorting (Flat Sort)
+                // 用户要求：任务栏排序不受分组约束，可以跨组混排
+                items = query
+                    .OrderBy(item => item.TaskbarSortIndex)
+                    .ToList();
+            }
+            else
+            {
+                // [Panel Mode] Enforce grouping (Grouped Sort)
+                // 面板模式默认保持分组聚合的视觉习惯
+                items = query
+                    .GroupBy(x => x.UIGroup)
+                    .OrderBy(g => g.Min(item => item.SortIndex))
+                    .SelectMany(g => g.OrderBy(item => item.SortIndex))
+                    .ToList();
             }
 
             bool singleLine = forTaskbar && _cfg.TaskbarSingleLine;
             int step = singleLine ? 1 : 2;
 
-            for (int i = 0; i < validItems.Count; i += step)
+            for (int i = 0; i < items.Count; i += step)
             {
                 var col = new Column();
-                col.Top = CreateMetric(validItems[i]);
+                col.Top = CreateMetric(items[i]);
 
-                if (!singleLine && i + 1 < validItems.Count)
+                if (!singleLine && i + 1 < items.Count)
                 {
-                    col.Bottom = CreateMetric(validItems[i + 1]);
+                    col.Bottom = CreateMetric(items[i + 1]);
                 }
                 cols.Add(col);
             }

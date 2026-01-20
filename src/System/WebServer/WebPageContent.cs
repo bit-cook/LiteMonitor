@@ -302,7 +302,7 @@ namespace LiteMonitor.src.WebServer
                 if (i.primary && i.sts > groups[gid].maxSts) groups[gid].maxSts = i.sts;
 
                 const isBigMode = ['NET', 'DISK', 'DATA'].includes(gid);
-                const isLoad = i.k.includes('Load') || (i.u === '%' && !i.k.includes('Fan'));
+                const isLoad = i.k.includes('Load') || (i.u.includes('%') && !i.k.includes('Fan'));
                 
                 if (!isBigMode && isLoad && !groups[gid].core) {
                     groups[gid].core = i;

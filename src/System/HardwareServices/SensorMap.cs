@@ -306,6 +306,15 @@ namespace LiteMonitor.src.SystemServices
                 }
             }
 
+            // --- Battery ---
+            if (type == HardwareType.Battery)
+            {
+                if (s.SensorType == SensorType.Level) return "BAT.Percent";
+                if (s.SensorType == SensorType.Power) return "BAT.Power";
+                if (s.SensorType == SensorType.Voltage) return "BAT.Voltage";
+                if (s.SensorType == SensorType.Current) return "BAT.Current";
+            }
+
             return null;
         }
 

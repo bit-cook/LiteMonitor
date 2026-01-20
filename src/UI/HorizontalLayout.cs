@@ -221,13 +221,30 @@ namespace LiteMonitor
 
         private string GetMaxValueSample(Column col, bool isTop)
         {
+            // 1. 优先检查具体的 Item 是否包含动态文本 (DASH/IP 等)
+            // 如果包含，返回其"长度占位符"作为签名。
+            // 这样只有当文本长度变化时 (如 9.9 -> 10.0) 才会触发重排，避免数值微变 (1.2 -> 1.3) 导致的每秒抖动。
+            var item = isTop ? col.Top : col.Bottom;
+            if (item != null && !string.IsNullOrEmpty(item.TextValue))
+            {
+                // 使用 '0' 填充相同长度，确保签名随长度变化
+                return new string('0', item.TextValue.Length);
+            }
+
             // ★★★ 优化：移除 ToUpperInvariant() 分配，改用忽略大小写的比较 ★★★
             string key = (isTop ? col.Top?.Key : col.Bottom?.Key) ??
                          (isTop ? col.Bottom?.Key : col.Top?.Key) ?? "";
 
+            // [新增] 电池充电状态下，样本增加 " ⚡" 以撑开列宽
+            string suffix = "";
+            if (UIUtils.IsBatteryCharging && key.StartsWith("BAT", StringComparison.OrdinalIgnoreCase))
+            {
+                suffix = "⚡"; 
+            }
+
             // ★★★ 简单匹配，使用 IndexOf 替换 Contains ★★★
-            if (key.IndexOf("CLOCK", StringComparison.OrdinalIgnoreCase) >= 0) return MAX_VALUE_CLOCK;
-            if (key.IndexOf("POWER", StringComparison.OrdinalIgnoreCase) >= 0) return MAX_VALUE_POWER;
+            if (key.IndexOf("CLOCK", StringComparison.OrdinalIgnoreCase) >= 0) return MAX_VALUE_CLOCK + suffix;
+            if (key.IndexOf("POWER", StringComparison.OrdinalIgnoreCase) >= 0) return MAX_VALUE_POWER + suffix;
 
             bool isIO =
                 key.IndexOf("READ", StringComparison.OrdinalIgnoreCase) >= 0 || 
@@ -237,7 +254,32 @@ namespace LiteMonitor
                 key.IndexOf("DAYUP", StringComparison.OrdinalIgnoreCase) >= 0 || 
                 key.IndexOf("DAYDOWN", StringComparison.OrdinalIgnoreCase) >= 0;
 
-            return isIO ? MAX_VALUE_IO : MAX_VALUE_NORMAL;
+            return (isIO ? MAX_VALUE_IO : MAX_VALUE_NORMAL) + suffix;
+        }
+
+        // [通用方案] 获取当前布局的签名是否变化 (用于检测是否需要重绘)
+        // 拼接所有列的 MaxValueSample，如果签名变了，说明列宽可能需要调整
+        public string GetLayoutIsChage(List<Column> cols)
+        {
+            if (cols == null || cols.Count == 0) return "";
+            
+            // 简单哈希或拼接。为了性能，这里只取前几列或关键特征，或者简单地拼接长度
+            // 鉴于列数不多，StringBuilder 拼接所有 Sample 长度即可
+            // 或者直接用 unchecked 加法算一个 HashCode
+            unchecked
+            {
+                int hash = 17;
+                foreach (var col in cols)
+                {
+                    string sTop = GetMaxValueSample(col, true);
+                    string sBot = GetMaxValueSample(col, false);
+                    hash = hash * 31 + sTop.Length; // 关注长度变化即可 (因为主要是宽度撑开)
+                    hash = hash * 31 + sTop.GetHashCode(); // 加上内容哈希更保险
+                    hash = hash * 31 + sBot.Length;
+                    hash = hash * 31 + sBot.GetHashCode();
+                }
+                return hash.ToString();
+            }
         }
     }
 

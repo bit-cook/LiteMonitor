@@ -11,6 +11,9 @@ namespace LiteMonitor.src.Core
     /// </summary>
     public static class UIUtils
     {
+        // 全局充电状态标志 (由 HardwareValueProvider 更新)
+        public static bool IsBatteryCharging = false;
+
         // ============================================================
         // ★★★ 新增：全局字符串驻留池 (内存优化 T1) ★★★
         // ============================================================
@@ -172,6 +175,18 @@ namespace LiteMonitor.src.Core
 
             if (key == "FPS") return ($"{v:0}", " FPS");
 
+            // [新增] 电池专用逻辑 (BAT.*)
+            if (key.StartsWith("BAT", StringComparison.OrdinalIgnoreCase))
+            {
+                // 统一处理充电图标
+                string icon = IsBatteryCharging ? "⚡" : "";
+
+                if (key.IndexOf("Percent", StringComparison.OrdinalIgnoreCase) >= 0) return ($"{v:0.0}", "%" + icon);
+                if (key.IndexOf("Voltage", StringComparison.OrdinalIgnoreCase) >= 0) return ($"{v:F2}", "V" + icon);
+                if (key.IndexOf("Current", StringComparison.OrdinalIgnoreCase) >= 0) return ($"{v:F2}", "A" + icon);
+                if (key.IndexOf("Power", StringComparison.OrdinalIgnoreCase) >= 0)   return ($"{v:F1}", "W" + icon);
+            }
+
             // 2. 百分比
             if (key.IndexOf("LOAD", StringComparison.OrdinalIgnoreCase) >= 0) return ($"{v:0.0}", "%");
 
@@ -239,12 +254,14 @@ namespace LiteMonitor.src.Core
             }
 
             // 4. 常规静态单位 (两者一样)
-            if (key.IndexOf("LOAD", StringComparison.OrdinalIgnoreCase) >= 0) return "%";
+            if (key.IndexOf("LOAD", StringComparison.OrdinalIgnoreCase) >= 0 || key == "BAT.Percent") return "%";
             if (key.IndexOf("TEMP", StringComparison.OrdinalIgnoreCase) >= 0) return "°C";
             if (key.IndexOf("FAN", StringComparison.OrdinalIgnoreCase) >= 0 || 
                 key.IndexOf("PUMP", StringComparison.OrdinalIgnoreCase) >= 0) return isTaskbar ? "R" : " RPM";
             if (key.IndexOf("CLOCK", StringComparison.OrdinalIgnoreCase) >= 0) return "GHz";
             if (key.IndexOf("POWER", StringComparison.OrdinalIgnoreCase) >= 0) return "W";
+            if (key == "BAT.Voltage") return "V";
+            if (key == "BAT.Current") return "A";
             if (key == "FPS") return isTaskbar ? "F" : " FPS";
 
             return "";
@@ -372,22 +389,34 @@ namespace LiteMonitor.src.Core
         {
             if (double.IsNaN(value)) return 0;
 
+            // ★★★ [修复] 充电状态 (负值) 始终视为安全 (绿色)，避免被误判为高负载红色 ★★★
+            if (key.StartsWith("BAT", StringComparison.OrdinalIgnoreCase) && value < 0) return 0;
+
             // ★★★ 优化：消除 ToUpperInvariant，改用 IndexOf 忽略大小写 ★★★
             // string k = key.ToUpperInvariant();
 
             // 1. Adaptive (频率/功耗要转化成使用率数值)
-            // ★★★ [新增] 风扇支持 ★★★
+            // ★★★ [新增] 风扇支持 + 电池支持 ★★★
             if (key.IndexOf("CLOCK", StringComparison.OrdinalIgnoreCase) >= 0 || 
                 key.IndexOf("POWER", StringComparison.OrdinalIgnoreCase) >= 0 || 
                 key.IndexOf("FAN", StringComparison.OrdinalIgnoreCase) >= 0 || 
                 key.IndexOf("PUMP", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                key.IndexOf("FPS", StringComparison.OrdinalIgnoreCase) >= 0)
+                key.IndexOf("FPS", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                (key.StartsWith("BAT") && key.IndexOf("Percent", StringComparison.OrdinalIgnoreCase) < 0))
             {
                 value = GetAdaptivePercentage(key, value) * 100;
             }
 
             // 2. 使用 GetThresholds 获取阈值
             var (warn, crit) = GetThresholds(key); // GetThresholds 内部已处理 NET/DISK 分离
+
+            // ★★★ [新增] 电池电量逻辑反转 (低电量变红) ★★★
+            if (key == "BAT.Percent")
+            {
+                if (value <= crit) return 2; // Critical Low
+                if (value <= warn) return 1; // Warning Low
+                return 0;
+            }
 
             // 3.NET/DISK 特殊处理：将 B/s 转换为 KB/s
             if (key.StartsWith("NET", StringComparison.OrdinalIgnoreCase) || 
@@ -447,6 +476,9 @@ namespace LiteMonitor.src.Core
                     return (th.DataDownMB.Warn, th.DataDownMB.Crit);
             }
 
+            // [新增] 电池电量默认阈值 (60% 警告, 20% 严重)
+            if (key == "BAT.Percent") return (60, 20);
+
             return (th.Load.Warn, th.Load.Crit);
         }
 
@@ -502,12 +534,13 @@ namespace LiteMonitor.src.Core
         // 把那段 if/else 逻辑搬到这里
         public static double GetUnifiedPercent(string key, double value)
         {
-            // 1. 自适应指标 (频率/功耗/风扇) -> 调用之前的 GetAdaptivePercentage
+            // 1. 自适应指标 (频率/功耗/风扇/电池非百分比) -> 调用之前的 GetAdaptivePercentage
             if (key.IndexOf("CLOCK", StringComparison.OrdinalIgnoreCase) >= 0 || 
                 key.IndexOf("POWER", StringComparison.OrdinalIgnoreCase) >= 0 || 
                 key.IndexOf("FAN", StringComparison.OrdinalIgnoreCase) >= 0 || 
                 key.IndexOf("PUMP", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                key.IndexOf("FPS", StringComparison.OrdinalIgnoreCase) >= 0) 
+                key.IndexOf("FPS", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                (key.StartsWith("BAT") && key.IndexOf("Percent", StringComparison.OrdinalIgnoreCase) < 0)) 
             {
                 return GetAdaptivePercentage(key, value);
             }
@@ -571,8 +604,13 @@ namespace LiteMonitor.src.Core
             else if (key == "CASE.Fan") max = cfg.RecordedMaxChassisFan;
             else if (key == "GPU.Fan") max = cfg.RecordedMaxGpuFan;
             else if (key == "FPS") max = cfg.RecordedMaxFps;
+            // [新增] 电池固定最大值 (基于主流笔记本)
+            else if (key == "BAT.Power") max = 100f;   // 100W PD快充
+            else if (key == "BAT.Voltage") max = 20f;  // 20V
+            else if (key == "BAT.Current") max = 5f;   // 5A
 
             if (max < 1) max = 1;
+            // ★★★ 修复：移除 Abs，让负数保持负数，从而在进度条上显示为 0/5% (Empty)，而不是满条 (Full) ★★★
             double pct = val / max;
             return pct > 1.0 ? 1.0 : pct;
         }

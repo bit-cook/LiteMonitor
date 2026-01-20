@@ -400,7 +400,7 @@ namespace LiteMonitor
                     // Logic: "{Short} ({Full})" e.g. "Up (Upload Speed)"
                     // If user set TaskbarLabel to " " (Hidden), we still want to show meaningful text in the MENU.
                     // So we use the calculated 'shortName' (fallback to default) + 'full'.
-                    string label = $"{shortName} ({full})";
+                    string label = $"{full} ({shortName})";
 
                     // 2. 创建菜单
                     var itemMenu = new ToolStripMenuItem(label)
@@ -418,8 +418,8 @@ namespace LiteMonitor
                         // ★★★ [核心修复] 勾选时触发弹窗引导 ★★★
                         if (itemMenu.Checked)
                         {
-                            if (itemConfig.Key.Contains("Clock") || itemConfig.Key.Contains("Power") || 
-                                itemConfig.Key.Contains("Fan") || itemConfig.Key.Contains("Pump"))
+                            if ((itemConfig.Key.Contains("Clock") || itemConfig.Key.Contains("Power") || 
+                                itemConfig.Key.Contains("Fan") || itemConfig.Key.Contains("Pump")) && !itemConfig.Key.Contains("BAT"))
                             {
                                 CheckAndRemind(full); // 传入全称给弹窗显示
                             }
@@ -427,8 +427,8 @@ namespace LiteMonitor
                     };
 
                     // 4. 鼠标悬停提示
-                    if (itemConfig.Key.Contains("Clock") || itemConfig.Key.Contains("Power") || 
-                        itemConfig.Key.Contains("Fan") || itemConfig.Key.Contains("Pump"))
+                    if ((itemConfig.Key.Contains("Clock") || itemConfig.Key.Contains("Power") || 
+                        itemConfig.Key.Contains("Fan") || itemConfig.Key.Contains("Pump")) && !itemConfig.Key.Contains("BAT"))
                         itemMenu.ToolTipText = LanguageManager.T("Menu.CalibrationTip");
 
                     monitorRoot.DropDownItems.Add(itemMenu);
@@ -476,16 +476,16 @@ namespace LiteMonitor
                             // ★★★ [核心修复] 勾选时触发弹窗引导 ★★★
                             if (itemMenu.Checked)
                             {
-                                if (itemConfig.Key.Contains("Clock") || itemConfig.Key.Contains("Power") || 
-                                    itemConfig.Key.Contains("Fan") || itemConfig.Key.Contains("Pump"))
+                                if ((itemConfig.Key.Contains("Clock") || itemConfig.Key.Contains("Power") || 
+                                    itemConfig.Key.Contains("Fan") || itemConfig.Key.Contains("Pump")) && !itemConfig.Key.Contains("BAT"))
                                 {
                                     CheckAndRemind(label);
                                 }
                             }
                         };
 
-                        if (itemConfig.Key.Contains("Clock") || itemConfig.Key.Contains("Power") || 
-                            itemConfig.Key.Contains("Fan") || itemConfig.Key.Contains("Pump"))
+                        if ((itemConfig.Key.Contains("Clock") || itemConfig.Key.Contains("Power") || 
+                            itemConfig.Key.Contains("Fan") || itemConfig.Key.Contains("Pump")) && !itemConfig.Key.Contains("BAT"))  
                             itemMenu.ToolTipText = LanguageManager.T("Menu.CalibrationTip");
 
                         monitorRoot.DropDownItems.Add(itemMenu);
@@ -602,7 +602,6 @@ namespace LiteMonitor
             
             menu.Items.Add(new ToolStripSeparator());
 
-            ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
             // === 语言切换 ===
             var langRoot = new ToolStripMenuItem(LanguageManager.T("Menu.Language"));

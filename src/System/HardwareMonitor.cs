@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Runtime.InteropServices; // ★★★ 新增：引用用于内存修剪的库
@@ -71,6 +71,9 @@ namespace LiteMonitor.src.SystemServices
                 // ★★★ 优化 T0：关闭 PCI 控制器扫描，省下 2 万个对象 (约 8MB) ★★★
                 // 除非你需要极底层的 SuperIO 调试，否则不需要开这个
                 IsControllerEnabled = true, 
+
+                // 开启电池监控
+                IsBatteryEnabled = true,
 
                 // 顺便确保 PSU 也关闭（通常不需要监控电源模块，除非是高端 Corsair 电源）
                 IsPsuEnabled = false
@@ -151,17 +154,21 @@ namespace LiteMonitor.src.SystemServices
                 // 1. 获取计数器状态
                 bool useCounter = _cfg.UseWinPerCounters && _perfCounterManager.IsInitialized;
                 
+                // ★★★ [优化] 全量更新判断 ★★★
+                // 如果开启了 WebServer，则需要强制更新所有硬件，因为网页端可能会查看主界面未开启的项目
+                bool forceAll = _cfg.WebServerEnabled;
+
                 // 2. CPU: 总是需要 (因为 LHM 要读温度)
-                bool needCpu = _cfg.IsAnyEnabled("CPU");
+                bool needCpu = forceAll || _cfg.IsAnyEnabled("CPU");
 
                 // 3. 显卡: 总是需要
-                bool needGpu = _cfg.IsAnyEnabled("GPU");
+                bool needGpu = forceAll || _cfg.IsAnyEnabled("GPU");
 
                 // 4. ★★★ [优化 1] 内存: 如果走了计数器，就不需要 LHM 轮询了 ★★★
-                bool needMem = _cfg.IsAnyEnabled("MEM") && !useCounter;
+                bool needMem = forceAll || (_cfg.IsAnyEnabled("MEM") && !useCounter);
 
                 // 5. 网络: 保持不变
-                bool needNet = _cfg.IsAnyEnabled("NET") || _cfg.IsAnyEnabled("DATA");
+                bool needNet = forceAll || _cfg.IsAnyEnabled("NET") || _cfg.IsAnyEnabled("DATA");
 
                 // 6. ★★★ [优化 2] 磁盘: 智能判断 ★★★
                 // 只有当 (没开计数器 OR 指定了特定盘 OR 需要看温度) 时，才需要 LHM 介入
@@ -170,9 +177,13 @@ namespace LiteMonitor.src.SystemServices
                 bool hasSpecificDisk = !string.IsNullOrEmpty(_cfg.PreferredDisk);
                 bool needDiskSpeed = _cfg.IsAnyEnabled("DISK") && (!useCounter || hasSpecificDisk);
                 
-                bool needDisk = needDiskSpeed || needDiskTemp;
+                bool needDisk = forceAll || needDiskSpeed || needDiskTemp;
+                // 7. 电池: 只有在开启时才更新
+                bool needBat = forceAll || _cfg.IsAnyEnabled("BAT");
+
                 // 判断主板更新需求
-                bool needMobo = _cfg.IsAnyEnabled("MOBO") || 
+                bool needMobo = forceAll || 
+                _cfg.IsAnyEnabled("MOBO") || 
                 _cfg.IsAnyEnabled("CPU.Fan") || 
                 _cfg.IsAnyEnabled("CPU.Pump") || 
                 _cfg.IsAnyEnabled("CASE.Fan");
@@ -188,6 +199,7 @@ namespace LiteMonitor.src.SystemServices
                         if (hw.HardwareType == HardwareType.Cpu && needCpu) { hw.Update(); continue; }
                         if ((hw.HardwareType == HardwareType.GpuNvidia || hw.HardwareType == HardwareType.GpuAmd || hw.HardwareType == HardwareType.GpuIntel) && needGpu) { hw.Update(); continue; }
                         if (hw.HardwareType == HardwareType.Memory && needMem) { hw.Update(); continue; }
+                        if (hw.HardwareType == HardwareType.Battery && needBat) { hw.Update(); continue; }
 
                         if (hw.HardwareType == HardwareType.Network && needNet)
                         {

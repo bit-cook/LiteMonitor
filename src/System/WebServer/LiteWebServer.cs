@@ -354,7 +354,9 @@ namespace LiteMonitor.src.WebServer
             List<MonitorItemConfig> itemsCopy;
             lock (_cfg.MonitorItems)
             {
-                // ★★★ 修复：应用与主界面一致的排序逻辑 (Group分组 -> Group排序 -> Item排序) ★★★
+                // ★★★ 修复：复用主界面 (Panel模式) 的排序逻辑 ★★★
+                // 先按 Group 分组 (物理聚类)，再按组内最小 SortIndex 排序组，最后组内排序
+                // 这与 UIController.BuildMetrics 保持完全一致
                 itemsCopy = _cfg.MonitorItems
                     .GroupBy(x => x.UIGroup)
                     .OrderBy(g => g.Min(x => x.SortIndex))
@@ -364,7 +366,6 @@ namespace LiteMonitor.src.WebServer
 
             foreach (var item in itemsCopy)
             {
-                if (item.Key == "NET.IP") continue; 
 
                 // ★★★ 修复：优先显示 DisplayLabel (包含 DynamicLabel)，解决插件名称不显示问题 ★★★
                 string displayName = !string.IsNullOrEmpty(item.DisplayLabel)
@@ -407,23 +408,44 @@ namespace LiteMonitor.src.WebServer
                         bool isRate = (item.Key.StartsWith("NET") || item.Key.StartsWith("DISK")) && !item.Key.Contains("Temp");
                         if (isRate && !string.IsNullOrEmpty(unit)) unit += "/s";
 
-                        // 计算百分比
-                        if (item.Key.Contains("Clock") || item.Key.Contains("Power") || 
-                            item.Key.Contains("Fan") || item.Key.Contains("Pump") || item.Key.Contains("FPS"))
+                        // 计算百分比 (复用 UIUtils 的核心逻辑)
+                        // ★★★ [修复] 强制使用 UIUtils 逻辑，并正确处理负值 ★★★
+                        
+                        double rawPct = 0;
+                        // Case A: 原生百分比类型 (Load / Temp / Mem) 或单位为 %
+                        if (item.Key.Contains("Load") || item.Key.Contains("Temp") || unit.Contains("%"))
                         {
-                            pct = UIUtils.GetAdaptivePercentage(item.Key, val.Value) * 100;
+                            // Load 和 Temp 本身数值就是 0-100 (或近似)，直接除以 100 归一化
+                            // 注意：Temp 主界面也是当作 0-100 处理的 (虽然理论可以更高，但 100度 满条是合理的)
+                            rawPct = val.Value / 100.0;
                         }
-                        else if (item.Key.Contains("Load") || unit.Contains("%"))
+                         // Case B: 已知最大值的类型 (Clock/Power/Fan/Pump/FPS/Battery)
+                         else if (item.Key.Contains("Clock") || item.Key.Contains("Power") || 
+                            item.Key.Contains("Fan") || item.Key.Contains("Pump") || item.Key.Contains("FPS") ||
+                            item.Key.StartsWith("BAT."))
                         {
-                            pct = val.Value;
+                            rawPct = UIUtils.GetAdaptivePercentage(item.Key, val.Value);
                         }
-                        else if (item.Key.Contains("Temp"))
-                        {
-                            pct = val.Value; 
-                        }
+                        // Case C: 速率类型 (Net/Disk)
                         else if (isRate)
                         {
-                            pct = Math.Min((val.Value / (100 * 1024 * 1024)) * 100, 100);
+                            // 速率类型的最大值是 100MB/s (写死的魔法值，参考原代码逻辑)
+                            rawPct = val.Value / (100 * 1024 * 1024);
+                        }
+                        
+                        // [严格复刻 UIUtils.DrawBar 逻辑]
+                        // 1. 如果是负数（充电状态），DrawBar 会保留负值，但 DrawBar 内部有 Math.Max(0.05, ...)
+                        //    在网页版，我们需要把这个逻辑显式写出来，因为 CSS width 不支持负数
+                        if (rawPct < 0)
+                        {
+                            // 如果是负数，强制显示为最小可见进度 (5%)
+                            // 这样用户知道它还在运作，但不会显示错误的满条
+                            pct = 1.0; 
+                        }
+                        else
+                        {
+                            // 2. 正常正数：限制在 [0.05, 1.0] 之间，防止进度条彻底消失
+                            pct = Math.Max(0.01, Math.Min(1.0, rawPct)) * 100;
                         }
 
                         status = UIUtils.GetColorResult(item.Key, val.Value);

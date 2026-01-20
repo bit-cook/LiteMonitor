@@ -7,13 +7,14 @@
     "HOST": "🖥️主机",
     "DISK": "💽磁盘",
     "NET": "🌐网络",
-    "DATA": "📈流量统计"
+    "DATA": "📈流量统计",
+    "BAT": "🔋电池"
   },
   "Items": {
     "DASH.HOST": "主机名",
     "DASH.Time": "时间",
     "DASH.IP": "内网IP",
-    "DASH.Uptime": "开机时间",
+    "DASH.Uptime": "已开机",
     "CPU.Load": "CPU使用率",
     "CPU.Temp": "CPU温度",
     "CPU.Clock": "CPU频率",
@@ -36,7 +37,11 @@
     "NET.Up": "上传",
     "NET.Down": "下载",
     "DATA.DayUp": "今日上传",
-    "DATA.DayDown": "今日下载"
+    "DATA.DayDown": "今日下载",
+    "BAT.Percent": "电池电量",
+    "BAT.Power": "电池功耗",
+    "BAT.Voltage": "电池电压",
+    "BAT.Current": "电池电流"
   },
   "Short": {
     "DASH.HOST": " ",
@@ -65,7 +70,11 @@
     "NET.Up": "🔼",
     "NET.Down": "🔽",
     "DATA.DayUp": "⏫",
-    "DATA.DayDown": "⏬"
+    "DATA.DayDown": "⏬",
+    "BAT.Percent": "🔋",
+    "BAT.Power": "🔋",
+    "BAT.Voltage": "🔋",
+    "BAT.Current": "🔋"
   },
   "Menu": {
     "__Comment_Global__": "--- 全局/按钮/右键菜单 ---",

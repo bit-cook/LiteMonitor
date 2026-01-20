@@ -1,7 +1,7 @@
 {
   "id": "ProxyLatency",
   "meta": {
-    "name": "科学节点延迟测试",
+    "name": "科学节点延迟监控",
     "version": "1.0",
     "author": "LiteMonitor",
     "description": "一般Clash代理地址为：127.0.0.1:7890 (默认端口，一般无需修改)，如测试本地延迟则全部留空"
@@ -51,10 +51,10 @@
   "outputs": [
     {
       "key": "ms",
-      "label": "{{proxy_server ? '代理延迟' : '直连延迟'}}",
+      "label": "{{proxy_server ? '代理延迟' : '本地延迟'}}",
       "short_label": "Ping",
       "format_val": "{{__latency__}}",
-      "unit": " ms",
+      "unit": " MS",
       "color": "{{latency_color}}"
     }
   ]

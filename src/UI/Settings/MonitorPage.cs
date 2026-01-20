@@ -234,7 +234,12 @@ namespace LiteMonitor.src.UI.SettingsPage
 
                 if (_isTaskbarTab)
                 {
-                    var items = _workingList.OrderBy(x => x.TaskbarSortIndex).ToList();
+                    // [Fix] Taskbar sort fallback to Global SortIndex if TaskbarSortIndex is 0 (or equal)
+                    var items = _workingList
+                        .OrderBy(x => x.TaskbarSortIndex)
+                        .ThenBy(x => x.SortIndex)
+                        .ToList();
+
                     if (_chkOnlyVisible.Checked)
                         items = items.Where(x => x.VisibleInTaskbar).ToList();
 
