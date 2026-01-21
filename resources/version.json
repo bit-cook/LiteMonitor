@@ -1,5 +1,5 @@
 {
-  "version": "1.2.5",
+  "version": "1.2.6",
   "changelog": "1，新增一键清理内存功能\n2，新增插件系统，已上线 天气、股票、加密货币、代理延迟等12个插件，并支持添加自定义API监控。\n3，新增笔记本电池监控：电量、功耗、电压、电流\n4，新增CPU电压监控、开机时间、系统信息等\n5，网页版改成WebSocket连接，并同时提供api接口\n6，修复和优化部分已知问题",
   "releaseDate": "2026-01-22",
   "downloadUrl": "https://github.com/Diorser/LiteMonitor/releases"
