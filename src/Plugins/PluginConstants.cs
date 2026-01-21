@@ -39,5 +39,10 @@ namespace LiteMonitor.src.Plugins
         /// 插件配置文件扩展名
         /// </summary>
         public const string CONFIG_EXT = "*.json";
+
+        /// <summary>
+        /// 失败重试间隔 (毫秒)
+        /// </summary>
+        public const int RETRY_INTERVAL_MS = 5000;
     }
 }

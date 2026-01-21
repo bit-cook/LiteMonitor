@@ -86,7 +86,16 @@ namespace LiteMonitor
             int titleH = t.FontGroup.Height;
             int titleY = gr.Bounds.Y - t.Layout.GroupTitleOffset - titleH;
 
-            var rectTitle = new Rectangle(gr.Bounds.X + gp, System.Math.Max(0, titleY), gr.Bounds.Width - gp * 2, titleH);
+            // [Fix] 修复 Windows 10 下 Emoji 显示不全的问题
+            // Emoji 字符高度通常大于普通字体高度，且 TextRenderer 的 VerticalCenter 可能导致上下被裁剪
+            // 解决方案：扩大绘制区域的高度，并保持中心对齐
+            int extraH = (int)(8 * t.Layout.LayoutScale);
+            
+            // Y 向上偏移一半 extraH，高度增加 extraH，这样中心点不变
+            var rectTitle = new Rectangle(gr.Bounds.X + gp, 
+                System.Math.Max(0, titleY - extraH / 2), 
+                gr.Bounds.Width - gp * 2, 
+                titleH + extraH);
 
             TextRenderer.DrawText(g, label, t.FontGroup, rectTitle,
                 ThemeManager.ParseColor(t.Color.TextGroup),

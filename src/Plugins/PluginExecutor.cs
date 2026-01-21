@@ -17,8 +17,9 @@ namespace LiteMonitor.src.Plugins
     /// </summary>
     public class PluginExecutor : IDisposable
     {
-        private readonly HttpClient _http;
+        private HttpClient _http;
         private readonly ConcurrentDictionary<string, Task<string>> _inflightRequests = new();
+        private readonly object _httpLock = new object();
         
         // Key = InstanceID_StepID_ParamsHash
         private class CacheItem
@@ -35,11 +36,20 @@ namespace LiteMonitor.src.Plugins
 
         public PluginExecutor()
         {
-            _http = new HttpClient();
-            _http.Timeout = TimeSpan.FromSeconds(10); 
-            _http.DefaultRequestHeaders.Add("User-Agent", "LiteMonitor/1.0");
+            InitializeDefaultClient();
             
             System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+        }
+
+        private void InitializeDefaultClient()
+        {
+            lock (_httpLock)
+            {
+                _http?.Dispose();
+                _http = new HttpClient();
+                _http.Timeout = TimeSpan.FromSeconds(10); 
+                _http.DefaultRequestHeaders.Add("User-Agent", "LiteMonitor/1.0");
+            }
         }
 
         public void Dispose()
@@ -325,7 +335,10 @@ namespace LiteMonitor.src.Plugins
 
         private HttpClient GetClient(string proxy)
         {
-            if (string.IsNullOrEmpty(proxy)) return _http;
+            if (string.IsNullOrEmpty(proxy))
+            {
+                lock (_httpLock) return _http;
+            }
 
             return _proxyClients.GetOrAdd(proxy, p => 
             {
@@ -488,6 +501,15 @@ namespace LiteMonitor.src.Plugins
 
         private void HandleExecutionError(PluginInstanceConfig inst, PluginTemplate tmpl, string keySuffix, Exception ex)
         {
+            // [Fix] If default client encounters network error, force recreate it to pick up potential system proxy changes
+            if (ex is HttpRequestException || ex is TaskCanceledException || ex is OperationCanceledException)
+            {
+                 // Only reset if this instance is NOT using a specific proxy (i.e. using default client)
+                 // We don't have easy access to the exact step config here easily, but checking if ANY step uses proxy is hard.
+                 // Heuristic: Just recreate default client. It's cheap enough (once per 5s on error).
+                 InitializeDefaultClient();
+            }
+
             if (tmpl.Outputs != null)
             {
                 foreach(var o in tmpl.Outputs) 

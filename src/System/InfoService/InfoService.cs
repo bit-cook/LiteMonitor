@@ -131,8 +131,10 @@ namespace LiteMonitor.src.SystemServices.InfoService
         {
             var now = DateTime.Now;
             
+            bool isNewSecond = now.Second != _lastSecond;
+
             // [Optimization] Only format time if second changed
-            if (now.Second != _lastSecond)
+            if (isNewSecond)
             {
                 _lastSecond = now.Second;
                 _lastTimeStr = now.ToString("ddd HH:mm:ss");
@@ -140,34 +142,27 @@ namespace LiteMonitor.src.SystemServices.InfoService
             }
 
             // Uptime
-            // [Optimization] Only format uptime if minute changed (or significant change)
-            // But seconds are shown for < 1 day, so we need second-level updates if < 1 day.
-            // If > 1 day, we show minutes, so we can slow down.
-            
+            // [Optimization] Update every minute, hide seconds
             TimeSpan ts = TimeSpan.FromMilliseconds(Environment.TickCount64);
             
-            if (ts.TotalDays < 1)
+            if (now.Minute != _lastUptimeMinute || string.IsNullOrEmpty(_lastUptimeStr))
             {
-                 // Update every second
-                 if (now.Second != _lastSecond || string.IsNullOrEmpty(_lastUptimeStr)) // Re-use the second check from above effectively
-                 {
-                    _lastUptimeStr = LanguageManager.CurrentLang == "zh"
-                        ? $"{ts.Hours}时 {ts.Minutes}分 {ts.Seconds}秒"
-                        : $"{ts.Hours}h {ts.Minutes}m {ts.Seconds}s";
-                    SetData(KEY_UPTIME, _lastUptimeStr);
-                 }
-            }
-            else
-            {
-                // Update every minute
-                if (now.Minute != _lastUptimeMinute)
+                _lastUptimeMinute = now.Minute;
+
+                if (ts.TotalDays < 1)
                 {
-                    _lastUptimeMinute = now.Minute;
+                    _lastUptimeStr = LanguageManager.CurrentLang == "zh"
+                        ? $"{ts.Hours}时 {ts.Minutes}分"
+                        : $"{ts.Hours}h {ts.Minutes}m";
+                }
+                else
+                {
                     _lastUptimeStr = LanguageManager.CurrentLang == "zh"
                         ? $"{(int)ts.TotalDays}天 {ts.Hours}时 {ts.Minutes}分"
                         : $"{(int)ts.TotalDays}d {ts.Hours}h {ts.Minutes}m";
-                    SetData(KEY_UPTIME, _lastUptimeStr);
                 }
+                
+                SetData(KEY_UPTIME, _lastUptimeStr);
             }
         }
 

@@ -305,7 +305,7 @@ namespace LiteMonitor.src.Plugins
                     // 动态调整间隔：如果失败，使用快速重试间隔 (5s)；如果成功，恢复正常间隔
                     if (!success)
                     {
-                        newTimer.Interval = 5000; // 5 seconds retry
+                        newTimer.Interval = PluginConstants.RETRY_INTERVAL_MS; 
                     }
                     else
                     {
@@ -315,7 +315,7 @@ namespace LiteMonitor.src.Plugins
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"Timer execution failed: {ex.Message}");
-                    newTimer.Interval = 5000; // Exception case also fast retry
+                    newTimer.Interval = PluginConstants.RETRY_INTERVAL_MS; // Exception case also fast retry
                 }
                 finally 
                 {
