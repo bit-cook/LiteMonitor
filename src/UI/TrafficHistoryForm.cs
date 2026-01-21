@@ -21,6 +21,29 @@ namespace LiteMonitor
 
         private float _scale = 1.0f;
 
+        // 参考 SettingsForm，使用 WS_EX_COMPOSITED 消除首次打开闪烁
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                CreateParams cp = base.CreateParams;
+                cp.ExStyle |= 0x02000000; // WS_EX_COMPOSITED
+                return cp;
+            }
+        }
+
+        protected override void OnResizeBegin(EventArgs e)
+        {
+            this.SuspendLayout();
+            base.OnResizeBegin(e);
+        }
+
+        protected override void OnResizeEnd(EventArgs e)
+        {
+            base.OnResizeEnd(e);
+            this.ResumeLayout(true);
+        }
+
         // === 配色 ===
         private readonly Color C_Back = Color.FromArgb(32, 32, 32);
         private readonly Color C_Panel = Color.FromArgb(45, 45, 45);

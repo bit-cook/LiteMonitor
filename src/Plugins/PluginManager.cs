@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using LiteMonitor;
+using LiteMonitor.src.SystemServices.InfoService;
 
 namespace LiteMonitor.src.Plugins
 {
@@ -99,6 +100,20 @@ namespace LiteMonitor.src.Plugins
             return _templates;
         }
 
+        private void CleanupPluginData(string instanceId)
+        {
+            if (string.IsNullOrEmpty(instanceId)) return;
+            
+            // 1. Remove raw values injected by plugin (Key starts with instanceId)
+            InfoService.Instance.RemoveDataByPrefix(instanceId);
+            
+            // 2. Remove dynamic properties (Label, ShortLabel, etc.)
+            // Keys are like PROP.Label.DASH.{instanceId}.{OutputKey}
+            InfoService.Instance.RemoveDataByPrefix("PROP.Label.DASH." + instanceId);
+            InfoService.Instance.RemoveDataByPrefix("PROP.ShortLabel.DASH." + instanceId);
+            InfoService.Instance.RemoveDataByPrefix("PROP.Unit.DASH." + instanceId); // If we add Unit support later
+        }
+
         public void Reload(Settings cfg)
         {
             // 1. Identify active instances
@@ -112,6 +127,7 @@ namespace LiteMonitor.src.Plugins
                 {
                     StopInstance(id);
                     _configSnapshots.Remove(id);
+                    CleanupPluginData(id);
                 }
             }
 
@@ -142,12 +158,22 @@ namespace LiteMonitor.src.Plugins
                     var tmpl = _templates.FirstOrDefault(x => x.Id == inst.TemplateId);
                     if (tmpl != null)
                     {
-                        PluginMonitorSyncService.Instance.SyncMonitorItem(inst, tmpl);
+                        // [Optimization] Defer Save until loop ends, handled implicitly if SyncMonitorItem returns true?
+                        // Actually Reload is triggered by Settings UI which saves after apply.
+                        // So we can skip internal save here or force one at end.
+                        // But SyncMonitorItem logic is complex, safer to let it update memory and we save once.
+                        
+                        PluginMonitorSyncService.Instance.SyncMonitorItem(inst, tmpl, saveIfChanged: false);
                         StartInstance(inst, tmpl);
                         _configSnapshots[inst.Id] = newHash;
                     }
                 }
             }
+            
+            // Force save once if needed, or rely on caller? 
+            // Caller (SettingsForm) already saves. But SyncMonitorItem might have added new items to Settings.
+            // Let's save just in case structure changed.
+            Settings.Load().Save();
         }
         
         private string GetConfigHash(PluginInstanceConfig inst)
@@ -178,6 +204,8 @@ namespace LiteMonitor.src.Plugins
             _configSnapshots.Clear();
 
             var settings = Settings.Load();
+            bool anyChange = false;
+            
             foreach (var inst in settings.PluginInstances)
             {
                 if (!inst.Enabled) continue;
@@ -185,10 +213,14 @@ namespace LiteMonitor.src.Plugins
                 var tmpl = _templates.FirstOrDefault(x => x.Id == inst.TemplateId);
                 if (tmpl == null) continue;
 
-                PluginMonitorSyncService.Instance.SyncMonitorItem(inst, tmpl);
+                bool changed = PluginMonitorSyncService.Instance.SyncMonitorItem(inst, tmpl, saveIfChanged: false);
+                if (changed) anyChange = true;
+                
                 StartInstance(inst, tmpl);
                 _configSnapshots[inst.Id] = GetConfigHash(inst);
             }
+            
+            if (anyChange) settings.Save();
         }
         
         public void RestartInstance(string instanceId, PluginInstanceConfig configOverride = null)
@@ -209,14 +241,14 @@ namespace LiteMonitor.src.Plugins
             if (inst == null || !inst.Enabled)
             {
                 // Clean up items if disabled
-                PluginMonitorSyncService.Instance.RemoveMonitorItems(instanceId);
+                PluginMonitorSyncService.Instance.RemoveMonitorItems(instanceId, saveIfChanged: true);
                 return;
             }
             
             var tmpl = _templates.FirstOrDefault(x => x.Id == inst.TemplateId);
             if (tmpl == null) return;
             
-            PluginMonitorSyncService.Instance.SyncMonitorItem(inst, tmpl);
+            PluginMonitorSyncService.Instance.SyncMonitorItem(inst, tmpl, saveIfChanged: true);
             StartInstance(inst, tmpl);
             _configSnapshots[inst.Id] = GetConfigHash(inst);
         }
@@ -225,8 +257,9 @@ namespace LiteMonitor.src.Plugins
         {
             StopInstance(instanceId);
             _configSnapshots.Remove(instanceId);
+            CleanupPluginData(instanceId);
 
-            PluginMonitorSyncService.Instance.RemoveMonitorItems(instanceId);
+            PluginMonitorSyncService.Instance.RemoveMonitorItems(instanceId, saveIfChanged: true);
         }
 
         public void Stop()

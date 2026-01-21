@@ -29,6 +29,13 @@ namespace LiteMonitor
             // 1. 基础功能区 (置顶、显示模式、任务栏开关、隐藏主界面/托盘)
             // ==================================================================================
 
+            // === 清理内存 ===
+            var cleanMem = new ToolStripMenuItem(LanguageManager.T("Menu.CleanMemory"));
+            cleanMem.Image = Properties.Resources.CleanMem;
+            cleanMem.Click += (_, __) => form.CleanMemory();
+            menu.Items.Add(cleanMem);
+            menu.Items.Add(new ToolStripSeparator());
+
             // === 置顶 ===
             var topMost = new ToolStripMenuItem(LanguageManager.T("Menu.TopMost"))
             {
@@ -42,8 +49,8 @@ namespace LiteMonitor
                 // ★ 统一调用
                 AppActions.ApplyWindowAttributes(cfg, form);
             };
-            menu.Items.Add(topMost);
-            menu.Items.Add(new ToolStripSeparator());
+            // menu.Items.Add(topMost); // Moved to DisplayMode
+            // menu.Items.Add(new ToolStripSeparator());
 
             // === 显示模式 ===
             var modeRoot = new ToolStripMenuItem(LanguageManager.T("Menu.DisplayMode"));
@@ -181,6 +188,9 @@ namespace LiteMonitor
                 // ★ 统一调用
                 AppActions.ApplyWindowAttributes(cfg, form);
             };
+            
+            // Move TopMost here
+            modeRoot.DropDownItems.Add(topMost);
             modeRoot.DropDownItems.Add(autoHide);
 
             // === 限制窗口拖出屏幕 (纯数据开关) ===
@@ -219,20 +229,26 @@ namespace LiteMonitor
             // === 透明度 ===
             var opacityRoot = new ToolStripMenuItem(LanguageManager.T("Menu.Opacity"));
             double[] presetOps = { 1.0, 0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.6, 0.5, 0.4, 0.3 };
+            
+            // [Optimization] Shared handler to avoid closure per item
+            EventHandler onOpacityClick = (s, e) => 
+            {
+                if (s is ToolStripMenuItem item && item.Tag is double val)
+                {
+                    cfg.Opacity = val;
+                    cfg.Save();
+                    AppActions.ApplyWindowAttributes(cfg, form);
+                }
+            };
+
             foreach (var val in presetOps)
             {
                 var item = new ToolStripMenuItem($"{val * 100:0}%")
                 {
-                    Checked = Math.Abs(cfg.Opacity - val) < 0.01
+                    Checked = Math.Abs(cfg.Opacity - val) < 0.01,
+                    Tag = val
                 };
-
-                item.Click += (_, __) =>
-                {
-                    cfg.Opacity = val;
-                    cfg.Save();
-                    // ★ 统一调用
-                    AppActions.ApplyWindowAttributes(cfg, form);
-                };
+                item.Click += onOpacityClick;
                 opacityRoot.DropDownItems.Add(item);
             }
             modeRoot.DropDownItems.Add(opacityRoot);
@@ -242,19 +258,25 @@ namespace LiteMonitor
             int[] presetWidths = { 180, 200, 220, 240, 260, 280, 300, 360, 420, 480, 540, 600, 660, 720, 780, 840, 900, 960, 1020, 1080, 1140, 1200 };
             int currentW = cfg.PanelWidth;
 
+            // [Optimization] Shared handler
+            EventHandler onWidthClick = (s, e) => 
+            {
+                if (s is ToolStripMenuItem item && item.Tag is int w)
+                {
+                    cfg.PanelWidth = w;
+                    cfg.Save();
+                    AppActions.ApplyThemeAndLayout(cfg, ui, form);
+                }
+            };
+
             foreach (var w in presetWidths)
             {
                 var item = new ToolStripMenuItem($"{w}px")
                 {
-                    Checked = Math.Abs(currentW - w) < 1
+                    Checked = Math.Abs(currentW - w) < 1,
+                    Tag = w
                 };
-                item.Click += (_, __) =>
-                {
-                    cfg.PanelWidth = w;
-                    cfg.Save();
-                    // ★ 统一调用
-                    AppActions.ApplyThemeAndLayout(cfg, ui, form);
-                };
+                item.Click += onWidthClick;
                 widthRoot.DropDownItems.Add(item);
             }
             modeRoot.DropDownItems.Add(widthRoot);
@@ -269,20 +291,26 @@ namespace LiteMonitor
             };
 
             double currentScale = cfg.UIScale;
+            
+            // [Optimization] Shared handler
+            EventHandler onScaleClick = (s, e) => 
+            {
+                if (s is ToolStripMenuItem item && item.Tag is double scale)
+                {
+                    cfg.UIScale = scale;
+                    cfg.Save();
+                    AppActions.ApplyThemeAndLayout(cfg, ui, form);
+                }
+            };
+
             foreach (var (scale, label) in presetScales)
             {
                 var item = new ToolStripMenuItem(label)
                 {
-                    Checked = Math.Abs(currentScale - scale) < 0.01
+                    Checked = Math.Abs(currentScale - scale) < 0.01,
+                    Tag = scale
                 };
-
-                item.Click += (_, __) =>
-                {
-                    cfg.UIScale = scale;
-                    cfg.Save();
-                    // ★ 统一调用
-                    AppActions.ApplyThemeAndLayout(cfg, ui, form);
-                };
+                item.Click += onScaleClick;
                 scaleRoot.DropDownItems.Add(item);
             }
 
@@ -364,6 +392,58 @@ namespace LiteMonitor
                 }
             }
 
+            // --- 内部辅助函数：判断是否为需要校准的硬件项 ---
+            bool IsHardwareItem(string key)
+            {
+                return (key.Contains("Clock") || key.Contains("Power") || 
+                       key.Contains("Fan") || key.Contains("Pump")) && !key.Contains("BAT");
+            }
+
+            // [Optimization] Shared handler for Taskbar items
+            EventHandler onTaskbarItemCheck = (s, e) => 
+            {
+                if (s is ToolStripMenuItem item && item.Tag is MonitorItemConfig conf)
+                {
+                    conf.VisibleInTaskbar = item.Checked;
+                    cfg.Save();
+                    if (ui != null) ui.RebuildLayout();
+
+                    if (item.Checked && IsHardwareItem(conf.Key))
+                    {
+                        string full = conf.DisplayLabel;
+                        if (string.IsNullOrEmpty(full))
+                        {
+                            full = LanguageManager.T("Items." + conf.Key);
+                            if (full.StartsWith("Items.")) full = conf.Key;
+                        }
+                        CheckAndRemind(full);
+                    }
+                }
+            };
+
+            // [Optimization] Shared handler for Panel items
+            EventHandler onPanelItemCheck = (s, e) => 
+            {
+                if (s is ToolStripMenuItem item && item.Tag is MonitorItemConfig conf)
+                {
+                    conf.VisibleInPanel = item.Checked;
+                    cfg.Save();
+                    if (ui != null) ui.RebuildLayout();
+
+                    if (item.Checked && IsHardwareItem(conf.Key))
+                    {
+                        // Panel Logic uses a slightly different label fallback in original code, but this is consistent
+                        string full = conf.DisplayLabel;
+                        if (string.IsNullOrEmpty(full))
+                        {
+                             full = LanguageManager.T("Items." + conf.Key);
+                             if (full.StartsWith("Items.")) full = conf.Key;
+                        }
+                        CheckAndRemind(full);
+                    }
+                }
+            };
+
             if (isTaskbarMode)
             {
                 // --- 模式 A: 任务栏 (平铺排序 + 显示全称和简称) ---
@@ -404,29 +484,15 @@ namespace LiteMonitor
                     var itemMenu = new ToolStripMenuItem(label)
                     {
                         Checked = itemConfig.VisibleInTaskbar,
-                        CheckOnClick = true
+                        CheckOnClick = true,
+                        Tag = itemConfig // Store context
                     };
 
                     // 3. 事件与提示
-                    itemMenu.CheckedChanged += (_, __) => { 
-                        itemConfig.VisibleInTaskbar = itemMenu.Checked; 
-                        cfg.Save(); 
-                        if (ui != null) ui.RebuildLayout(); 
-
-                        // ★★★ [核心修复] 勾选时触发弹窗引导 ★★★
-                        if (itemMenu.Checked)
-                        {
-                            if ((itemConfig.Key.Contains("Clock") || itemConfig.Key.Contains("Power") || 
-                                itemConfig.Key.Contains("Fan") || itemConfig.Key.Contains("Pump")) && !itemConfig.Key.Contains("BAT"))
-                            {
-                                CheckAndRemind(full); // 传入全称给弹窗显示
-                            }
-                        }
-                    };
+                    itemMenu.CheckedChanged += onTaskbarItemCheck;
 
                     // 4. 鼠标悬停提示
-                    if ((itemConfig.Key.Contains("Clock") || itemConfig.Key.Contains("Power") || 
-                        itemConfig.Key.Contains("Fan") || itemConfig.Key.Contains("Pump")) && !itemConfig.Key.Contains("BAT"))
+                    if (IsHardwareItem(itemConfig.Key))
                         itemMenu.ToolTipText = LanguageManager.T("Menu.CalibrationTip");
 
                     monitorRoot.DropDownItems.Add(itemMenu);
@@ -463,27 +529,13 @@ namespace LiteMonitor
                         var itemMenu = new ToolStripMenuItem(label)
                         {
                             Checked = itemConfig.VisibleInPanel,
-                            CheckOnClick = true
+                            CheckOnClick = true,
+                            Tag = itemConfig // Store context
                         };
 
-                        itemMenu.CheckedChanged += (_, __) => { 
-                            itemConfig.VisibleInPanel = itemMenu.Checked; 
-                            cfg.Save(); 
-                            if (ui != null) ui.RebuildLayout(); 
+                        itemMenu.CheckedChanged += onPanelItemCheck;
 
-                            // ★★★ [核心修复] 勾选时触发弹窗引导 ★★★
-                            if (itemMenu.Checked)
-                            {
-                                if ((itemConfig.Key.Contains("Clock") || itemConfig.Key.Contains("Power") || 
-                                    itemConfig.Key.Contains("Fan") || itemConfig.Key.Contains("Pump")) && !itemConfig.Key.Contains("BAT"))
-                                {
-                                    CheckAndRemind(label);
-                                }
-                            }
-                        };
-
-                        if ((itemConfig.Key.Contains("Clock") || itemConfig.Key.Contains("Power") || 
-                            itemConfig.Key.Contains("Fan") || itemConfig.Key.Contains("Pump")) && !itemConfig.Key.Contains("BAT"))  
+                        if (IsHardwareItem(itemConfig.Key))  
                             itemMenu.ToolTipText = LanguageManager.T("Menu.CalibrationTip");
 
                         monitorRoot.DropDownItems.Add(itemMenu);
@@ -607,22 +659,27 @@ namespace LiteMonitor
 
             if (Directory.Exists(langDir))
             {
+                // [Optimization] Shared handler
+                EventHandler onLangClick = (s, e) => 
+                {
+                    if (s is ToolStripMenuItem item && item.Tag is string code)
+                    {
+                        cfg.Language = code;
+                        cfg.Save();
+                        AppActions.ApplyLanguage(cfg, ui, form);
+                    }
+                };
+
                 foreach (var file in Directory.EnumerateFiles(langDir, "*.json"))
                 {
                     string code = Path.GetFileNameWithoutExtension(file);
 
                     var item = new ToolStripMenuItem(code.ToUpper())
                     {
-                        Checked = cfg.Language.Equals(code, StringComparison.OrdinalIgnoreCase)
+                        Checked = cfg.Language.Equals(code, StringComparison.OrdinalIgnoreCase),
+                        Tag = code
                     };
-
-                    item.Click += (_, __) =>
-                    {
-                        cfg.Language = code;
-                        cfg.Save();
-                        // ★ 统一调用
-                        AppActions.ApplyLanguage(cfg, ui, form);
-                    };
+                    item.Click += onLangClick;
 
                     langRoot.DropDownItems.Add(item);
                 }

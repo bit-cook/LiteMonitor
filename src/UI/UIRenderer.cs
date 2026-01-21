@@ -184,12 +184,13 @@ namespace LiteMonitor
             {
                 // 使用半透明的 BarBackground 作为分割线
                 Color divColor = Color.FromArgb(100, ThemeManager.ParseColor(t.Color.BarBackground));
-                using (var pen = new Pen(divColor, 1))
-                {
-                    // 线条稍微缩进一点，更美观
-                    int lineY = it.Bounds.Bottom - 1;
-                    g.DrawLine(pen, it.Bounds.Left + 5, lineY, it.Bounds.Right - 5, lineY);
-                }
+                
+                // [优化] 使用缓存的 Pen
+                var pen = UIUtils.GetPen(divColor, 1);
+                
+                // 线条稍微缩进一点，更美观
+                int lineY = it.Bounds.Bottom - 1;
+                g.DrawLine(pen, it.Bounds.Left + 5, lineY, it.Bounds.Right - 5, lineY);
             }
         }
 

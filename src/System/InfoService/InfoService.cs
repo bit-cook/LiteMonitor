@@ -40,6 +40,12 @@ namespace LiteMonitor.src.SystemServices.InfoService
         private long _lastUpdateTick = 0;
         private int _currentInterval = INTERVAL_FAST;
 
+        // [Optimization] Cache time strings to avoid allocs every tick
+        private string _lastTimeStr = "";
+        private int _lastSecond = -1;
+        private string _lastUptimeStr = "";
+        private int _lastUptimeMinute = -1;
+
         /// <summary>
         /// 初始化默认值并启动首次更新
         /// </summary>
@@ -91,6 +97,19 @@ namespace LiteMonitor.src.SystemServices.InfoService
             _currentInterval = INTERVAL_SLOW;
         }
 
+        public void RemoveDataByPrefix(string prefix)
+        {
+            if (string.IsNullOrEmpty(prefix)) return;
+            lock (_lock)
+            {
+                var keysToRemove = _data.Keys.Where(k => k.StartsWith(prefix)).ToList();
+                foreach (var k in keysToRemove)
+                {
+                    _data.Remove(k);
+                }
+            }
+        }
+
         /// <summary>
         /// 主循环调用 (建议每帧或定时器调用)
         /// </summary>
@@ -110,31 +129,46 @@ namespace LiteMonitor.src.SystemServices.InfoService
 
         private void UpdateTimeInfo()
         {
-            // Format: 周五 21:11:11
-            SetData(KEY_TIME, DateTime.Now.ToString("ddd HH:mm:ss"));
+            var now = DateTime.Now;
+            
+            // [Optimization] Only format time if second changed
+            if (now.Second != _lastSecond)
+            {
+                _lastSecond = now.Second;
+                _lastTimeStr = now.ToString("ddd HH:mm:ss");
+                SetData(KEY_TIME, _lastTimeStr);
+            }
 
             // Uptime
-            TimeSpan ts = TimeSpan.FromMilliseconds(Environment.TickCount64);
+            // [Optimization] Only format uptime if minute changed (or significant change)
+            // But seconds are shown for < 1 day, so we need second-level updates if < 1 day.
+            // If > 1 day, we show minutes, so we can slow down.
             
-            // Format: 
-            // < 1 Day: 5h 12m 30s (5时 12分 30秒)
-            // > 1 Day: 3d 5h 12m  (3天 5时 12分)
-            string upStr;
+            TimeSpan ts = TimeSpan.FromMilliseconds(Environment.TickCount64);
             
             if (ts.TotalDays < 1)
             {
-                upStr = LanguageManager.CurrentLang == "zh"
-                    ? $"{ts.Hours}时 {ts.Minutes}分 {ts.Seconds}秒"
-                    : $"{ts.Hours}h {ts.Minutes}m {ts.Seconds}s";
+                 // Update every second
+                 if (now.Second != _lastSecond || string.IsNullOrEmpty(_lastUptimeStr)) // Re-use the second check from above effectively
+                 {
+                    _lastUptimeStr = LanguageManager.CurrentLang == "zh"
+                        ? $"{ts.Hours}时 {ts.Minutes}分 {ts.Seconds}秒"
+                        : $"{ts.Hours}h {ts.Minutes}m {ts.Seconds}s";
+                    SetData(KEY_UPTIME, _lastUptimeStr);
+                 }
             }
             else
             {
-                upStr = LanguageManager.CurrentLang == "zh"
-                    ? $"{(int)ts.TotalDays}天 {ts.Hours}时 {ts.Minutes}分"
-                    : $"{(int)ts.TotalDays}d {ts.Hours}h {ts.Minutes}m";
+                // Update every minute
+                if (now.Minute != _lastUptimeMinute)
+                {
+                    _lastUptimeMinute = now.Minute;
+                    _lastUptimeStr = LanguageManager.CurrentLang == "zh"
+                        ? $"{(int)ts.TotalDays}天 {ts.Hours}时 {ts.Minutes}分"
+                        : $"{(int)ts.TotalDays}d {ts.Hours}h {ts.Minutes}m";
+                    SetData(KEY_UPTIME, _lastUptimeStr);
+                }
             }
-
-            SetData(KEY_UPTIME, upStr);
         }
 
         private void UpdateData()

@@ -93,6 +93,8 @@
     "SpeedTest": "Speedtest",
     "Traffic": "Verlauf",
     "ThemeEditor": "Editor",
+    "CleanMemory": "RAM bereinigen",
+    "CleanMemorySuccess": "RAM bereinigt",
     "ShowItems": "Elemente",
 
     "__Comment_Page1__": "--- 1. Panel ---",

@@ -164,7 +164,26 @@ namespace LiteMonitor.src.Core
         public static string FormatHorizontalValue(string value)
         {
             if (string.IsNullOrWhiteSpace(value)) return value;
-            string clean = value.Replace("/s", "").Replace("RPM", "R").Replace("FPS", "F").Trim();
+            
+            // [Optimization] Avoid chained Replace calls which cause multiple allocations.
+            // Units are almost always at the end of the string.
+            string clean = value;
+
+            if (clean.EndsWith("/s", StringComparison.Ordinal))
+            {
+                clean = clean.Substring(0, clean.Length - 2);
+            }
+            
+            if (clean.EndsWith("RPM", StringComparison.Ordinal))
+            {
+                clean = clean.Substring(0, clean.Length - 3) + "R";
+            }
+            else if (clean.EndsWith("FPS", StringComparison.Ordinal))
+            {
+                clean = clean.Substring(0, clean.Length - 3) + "F";
+            }
+
+            clean = clean.Trim();
 
             int splitIndex = -1;
             for (int i = 0; i < clean.Length; i++)

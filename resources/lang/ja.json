@@ -94,6 +94,8 @@
     "SpeedTest": "速度テスト",
     "Traffic": "通信量履歴",
     "ThemeEditor": "テーマ編集",
+    "CleanMemory": "メモリ解放",
+    "CleanMemorySuccess": "メモリ解放完了",
     "ShowItems": "表示項目",
 
     "__Comment_Page1__": "--- 1. メイン画面 ---",

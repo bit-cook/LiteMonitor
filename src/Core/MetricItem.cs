@@ -19,10 +19,26 @@ namespace LiteMonitor
         public MonitorItemConfig BoundConfig { get; set; }
 
         private string _key = "";
+        
+        // [Optimization] Cached InfoService lookup keys
+        private string _propLabelKey;
+        private string _propShortLabelKey;
+        private string _dashColorKey;
+
         public string Key 
         { 
             get => _key;
-            set => _key = UIUtils.Intern(value); 
+            set 
+            {
+                _key = UIUtils.Intern(value);
+                // Pre-calculate lookup keys
+                _propLabelKey = "PROP.Label." + _key;
+                _propShortLabelKey = "PROP.ShortLabel." + _key;
+                if (_key.StartsWith("DASH."))
+                    _dashColorKey = _key.Substring(5) + ".Color";
+                else
+                    _dashColorKey = null;
+            } 
         }
 
         private string _label = "";
@@ -36,8 +52,8 @@ namespace LiteMonitor
                     return BoundConfig.UserLabel;
                 }
 
-                // [Refactor] 尝试从 InfoService 读取动态 Label (由 PluginExecutor 注入)
-                string dynLabel = InfoService.Instance.GetValue("PROP.Label." + Key);
+                // [Refactor] 尝试从 InfoService 读取动态 Label (使用缓存的Key)
+                string dynLabel = InfoService.Instance.GetValue(_propLabelKey);
                 if (!string.IsNullOrEmpty(dynLabel)) return dynLabel;
 
                 // 兼容旧逻辑：Config 中的 DynamicLabel
@@ -61,8 +77,8 @@ namespace LiteMonitor
                     return BoundConfig.TaskbarLabel;
                 }
 
-                // [Refactor] 尝试从 InfoService 读取动态 ShortLabel
-                string dynShort = InfoService.Instance.GetValue("PROP.ShortLabel." + Key);
+                // [Refactor] 尝试从 InfoService 读取动态 ShortLabel (使用缓存的Key)
+                string dynShort = InfoService.Instance.GetValue(_propShortLabelKey);
                 if (!string.IsNullOrEmpty(dynShort)) return dynShort;
 
                 if (BoundConfig != null && !string.IsNullOrEmpty(BoundConfig.DynamicTaskbarLabel))
@@ -103,10 +119,9 @@ namespace LiteMonitor
         public string GetFormattedText(bool isHorizontal)
         {
             // [Debug & Fix] 1. Always update color state for Plugin Items FIRST
-            if (Key.StartsWith("DASH."))
+            if (_dashColorKey != null) // Use cached check
             {
-                string dashKey = Key.Substring(5);
-                string colorVal = InfoService.Instance.GetValue(dashKey + ".Color");
+                string colorVal = InfoService.Instance.GetValue(_dashColorKey);
                 
                 if (!string.IsNullOrEmpty(colorVal))
                 {
@@ -121,8 +136,14 @@ namespace LiteMonitor
                 }
             }
 
-            // 2. Load Config
-            var cfg = Settings.Load().MonitorItems.FirstOrDefault(x => x.Key == Key);
+            // 2. Load Config (Optimized)
+            var cfg = BoundConfig;
+            if (cfg == null)
+            {
+                 // Fallback: This should rarely happen if initialized correctly
+                 cfg = Settings.Load().MonitorItems.FirstOrDefault(x => x.Key == Key);
+            }
+            
             string userFormat = isHorizontal ? cfg?.UnitTaskbar : cfg?.UnitPanel;
             HasCustomUnit = !string.IsNullOrEmpty(userFormat) && userFormat != "Auto";
 
@@ -150,15 +171,22 @@ namespace LiteMonitor
                 }
                 else
                 {
+                    string candidate;
                     if (string.IsNullOrEmpty(userFormat) || userFormat == "Auto")
                     {
                          string autoUnit = MetricUtils.GetDisplayUnit(Key, rawUnit, "Auto"); 
-                         _cachedHorizontalText = MetricUtils.FormatHorizontalValue(valStr + autoUnit);
+                         candidate = MetricUtils.FormatHorizontalValue(valStr + autoUnit);
                     }
                     else
                     {
-                        _cachedHorizontalText = valStr + CachedUnitText;
+                        candidate = valStr + CachedUnitText;
                     }
+
+                    // [Optimization] Share string instance if content is identical to reduce memory
+                    if (candidate == _cachedNormalText) 
+                        _cachedHorizontalText = _cachedNormalText;
+                    else 
+                        _cachedHorizontalText = candidate;
                 }
 
                 // Only calculate color if NOT a plugin item (already handled above)

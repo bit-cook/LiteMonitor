@@ -93,6 +93,8 @@
         "SpeedTest": "Network Test",
         "Traffic": "Traffic History",
         "ThemeEditor": "Theme Editor",
+        "CleanMemory": "Clean Memory",
+        "CleanMemorySuccess": "Memory Cleaned",
         "ShowItems": "Show Items",
 
     "__Comment_Page1__": "--- 1. Main Panel ---",

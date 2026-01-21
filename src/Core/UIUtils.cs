@@ -49,9 +49,29 @@ namespace LiteMonitor.src.Core
         // 3. GDI+ Resource Cache (Brushes & Fonts)
         // ============================================================
         private static readonly Dictionary<string, SolidBrush> _brushCache = new(16);
+        private static readonly Dictionary<string, Pen> _penCache = new(16);
         private static readonly Dictionary<string, Font> _fontCache = new(16);
         private static readonly object _brushLock = new object();
         private const int MAX_BRUSH_CACHE = 32;
+
+        public static Pen GetPen(Color color, float width = 1.0f)
+        {
+            string key = $"{color.ToArgb()}_{width:F1}";
+            lock (_brushLock)
+            {
+                if (!_penCache.TryGetValue(key, out var pen))
+                {
+                    if (_penCache.Count >= MAX_BRUSH_CACHE)
+                    {
+                        foreach (var p in _penCache.Values) p.Dispose();
+                        _penCache.Clear();
+                    }
+                    pen = new Pen(color, width);
+                    _penCache[key] = pen;
+                }
+                return pen;
+            }
+        }
 
         public static SolidBrush GetBrush(string color)
         {
@@ -110,6 +130,9 @@ namespace LiteMonitor.src.Core
             {
                 foreach (var b in _brushCache.Values) b.Dispose();
                 _brushCache.Clear();
+
+                foreach (var p in _penCache.Values) p.Dispose();
+                _penCache.Clear();
                 
                 foreach (var f in _fontCache.Values) f.Dispose();
                 _fontCache.Clear();

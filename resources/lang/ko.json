@@ -93,6 +93,8 @@
     "SpeedTest": "속도 측정",
     "Traffic": "트래픽 기록",
     "ThemeEditor": "테마 편집",
+    "CleanMemory": "메모리 정리",
+    "CleanMemorySuccess": "메모리 정리 완료",
     "ShowItems": "항목 표시",
 
     "__Comment_Page1__": "--- 1. Main Panel ---",

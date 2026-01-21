@@ -93,6 +93,8 @@
     "SpeedTest": "Velocidad",
     "Traffic": "Tráfico",
     "ThemeEditor": "Editor",
+    "CleanMemory": "Limpiar RAM",
+    "CleanMemorySuccess": "RAM limpiada",
     "ShowItems": "Elementos",
 
     "__Comment_Page1__": "--- 1. Panel ---",

@@ -152,6 +152,9 @@ namespace LiteMonitor
                     case 3: 
                         _mainForm.OpenTrafficHistory();
                         break;
+                    case 4: 
+                        _mainForm.CleanMemory();
+                        break;
                     case 0: 
                     default:
                         if (_mainForm.Visible)

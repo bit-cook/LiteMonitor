@@ -93,6 +93,8 @@
     "SpeedTest": "Тест сети",
     "Traffic": "История",
     "ThemeEditor": "Редактор",
+    "CleanMemory": "Очистка ОЗУ",
+    "CleanMemorySuccess": "ОЗУ очищена",
     "ShowItems": "Элементы",
 
     "__Comment_Page1__": "--- 1. Panel ---",

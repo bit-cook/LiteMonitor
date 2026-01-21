@@ -94,6 +94,8 @@
     "SpeedTest": "Test débit",
     "Traffic": "Historique",
     "ThemeEditor": "Éditeur",
+    "CleanMemory": "Nettoyer RAM",
+    "CleanMemorySuccess": "RAM nettoyée",
     "ShowItems": "Éléments",
 
     "__Comment_Page1__": "--- 1. Panneau ---",

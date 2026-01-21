@@ -23,9 +23,9 @@ namespace LiteMonitor.src.Plugins
         /// </summary>
         /// <param name="inst">插件实例配置</param>
         /// <param name="tmpl">插件模板</param>
-        public void SyncMonitorItem(PluginInstanceConfig inst, PluginTemplate tmpl)
+        public bool SyncMonitorItem(PluginInstanceConfig inst, PluginTemplate tmpl, bool saveIfChanged = true)
         {
-            if (inst == null || tmpl == null) return;
+            if (inst == null || tmpl == null) return false;
 
             // 优化 1: 正则预编译 (Static Readonly)
             // 移至类级别定义
@@ -150,13 +150,14 @@ namespace LiteMonitor.src.Plugins
                 }
             } // End Lock
 
-            if (changed) settings.Save();
+            if (changed && saveIfChanged) settings.Save();
+            return changed;
         }
 
         /// <summary>
         /// 清理指定插件实例的所有监控项
         /// </summary>
-        public void RemoveMonitorItems(string instanceId)
+        public void RemoveMonitorItems(string instanceId, bool saveIfChanged = true)
         {
             var settings = Settings.Load();
             string mainKey = PluginConstants.DASH_PREFIX + instanceId;
@@ -168,7 +169,7 @@ namespace LiteMonitor.src.Plugins
                 {
                     settings.MonitorItems.Remove(item);
                 }
-                settings.Save();
+                if (saveIfChanged) settings.Save();
             }
         }
 

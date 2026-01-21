@@ -61,7 +61,8 @@ namespace LiteMonitor.src.UI.SettingsPage
                 LanguageManager.T("Menu.ActionSwitchLayout"),
                 LanguageManager.T("Menu.ActionTaskMgr"),
                 LanguageManager.T("Menu.ActionSettings"),
-                LanguageManager.T("Menu.ActionTrafficHistory")
+                LanguageManager.T("Menu.ActionTrafficHistory"),
+                LanguageManager.T("Menu.CleanMemory")
             };
             group.AddComboIndex(this, "Menu.DoubleClickAction", actions,
                 () => Config.MainFormDoubleClickAction,

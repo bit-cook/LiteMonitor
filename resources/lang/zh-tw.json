@@ -90,6 +90,8 @@
         "SpeedTest": "網速測試",
         "Traffic": "歷史流量統計",
         "ThemeEditor": "主題編輯器",
+        "CleanMemory": "清理記憶體",
+        "CleanMemorySuccess": "記憶體清理完成",
 
     "__Comment_Page1__": "--- 1. 主介面設定 (MainPanelPage) ---",
     "MainFormSettings": "主介面設定",

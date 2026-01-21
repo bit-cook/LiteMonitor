@@ -15,7 +15,7 @@ namespace LiteMonitor.src.Plugins
     /// 插件执行引擎 (Refactored)
     /// 负责执行 API 请求、链式步骤、数据处理和结果注入
     /// </summary>
-    public class PluginExecutor
+    public class PluginExecutor : IDisposable
     {
         private readonly HttpClient _http;
         private readonly ConcurrentDictionary<string, Task<string>> _inflightRequests = new();
@@ -26,6 +26,9 @@ namespace LiteMonitor.src.Plugins
             public string RawResponse { get; set; } 
             public DateTime Timestamp { get; set; }
         }
+        
+        // [Optimization] Limit cache size? Currently simple ConcurrentDictionary.
+        // We will add a simple cleanup if count > 100 in ClearCache or periodic check.
         private readonly ConcurrentDictionary<string, CacheItem> _stepCache = new();
 
         public event Action OnSchemaChanged;
@@ -39,11 +42,25 @@ namespace LiteMonitor.src.Plugins
             System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
         }
 
+        public void Dispose()
+        {
+            _http?.Dispose();
+            foreach (var client in _proxyClients.Values)
+            {
+                client.Dispose();
+            }
+            _proxyClients.Clear();
+            _stepCache.Clear();
+        }
+
         public void ClearCache(string instanceId = null)
         {
             if (string.IsNullOrEmpty(instanceId))
             {
                 _stepCache.Clear();
+                
+                // Also clear proxy clients? No, they are expensive to recreate.
+                // But maybe remove unused ones? For now, keep them.
             }
             else
             {
@@ -238,16 +255,6 @@ namespace LiteMonitor.src.Plugins
                             sw.Stop();
                             context["__latency__"] = sw.ElapsedMilliseconds.ToString();
                         }
-
-                        // Update Cache
-                        if (step.CacheMinutes != 0)
-                        {
-                            _stepCache[cacheKey] = new CacheItem
-                            {
-                                RawResponse = resultRaw,
-                                Timestamp = DateTime.Now
-                            };
-                        }
                     }
                     catch (OperationCanceledException)
                     {
@@ -269,6 +276,38 @@ namespace LiteMonitor.src.Plugins
                 
                 // Process
                 PluginProcessor.ApplyTransforms(step.Process, context);
+
+                // [Fix] Update Cache AFTER successful parsing and processing
+                // This ensures we don't cache invalid data (e.g. HTML error pages that passed HTTP check but failed JSON parse)
+                if (!hit && step.CacheMinutes != 0)
+                {
+                    // [Optimization] Prevent large blobs from polluting cache (limit 500KB)
+                    if (resultRaw != null && resultRaw.Length > 500 * 1024)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Plugin response too large to cache ({resultRaw.Length} bytes). Key: {cacheKey}");
+                    }
+                    else
+                    {
+                        // [Optimization] Prevent unbounded growth with timestamp-based eviction
+                        if (_stepCache.Count > 100)
+                        {
+                            // Evict oldest items first
+                            var keysToRemove = _stepCache
+                                .OrderBy(kv => kv.Value.Timestamp)
+                                .Take(20)
+                                .Select(kv => kv.Key)
+                                .ToList();
+                                
+                            foreach(var k in keysToRemove) _stepCache.TryRemove(k, out _);
+                        }
+
+                        _stepCache[cacheKey] = new CacheItem
+                        {
+                            RawResponse = resultRaw,
+                            Timestamp = DateTime.Now
+                        };
+                    }
+                }
             }
             catch (OperationCanceledException)
             {
@@ -316,6 +355,9 @@ namespace LiteMonitor.src.Plugins
 
             var client = GetClient(proxy);
             var response = await client.SendAsync(request, token);
+            // [Fix] Enforce success status code to prevent caching error pages (e.g. 404/500 HTML)
+            response.EnsureSuccessStatusCode();
+            
             byte[] bytes = await response.Content.ReadAsByteArrayAsync(token);
             
             if (encoding?.ToLower() == "gbk")
@@ -368,70 +410,80 @@ namespace LiteMonitor.src.Plugins
 
         private void ProcessOutputs(PluginInstanceConfig inst, PluginTemplate tmpl, Dictionary<string, string> inputs, string keySuffix)
         {
-            bool schemaChanged = false;
-            var settings = Settings.Load(); 
-
-            lock (settings) 
+            // Removed lock(settings) since we don't modify Settings directly anymore
+            foreach (var output in tmpl.Outputs)
             {
-                foreach (var output in tmpl.Outputs)
+                string injectKey = inst.Id + keySuffix + "." + output.Key;
+                
+                // 1. Value Injection
+                string val = PluginProcessor.ResolveTemplate(output.Format, inputs);
+                if (string.IsNullOrEmpty(val)) val = PluginConstants.STATUS_EMPTY;
+                
+                // [Optimization] Check existing value to avoid string churn
+                string currentVal = InfoService.Instance.GetValue(injectKey);
+                if (val != currentVal)
                 {
-                    string val = PluginProcessor.ResolveTemplate(output.Format, inputs);
-                    string injectKey = inst.Id + keySuffix + "." + output.Key;
-                    
-                    if (string.IsNullOrEmpty(val)) val = PluginConstants.STATUS_EMPTY;
                     InfoService.Instance.InjectValue(injectKey, val);
+                }
 
-                    if (!string.IsNullOrEmpty(output.Color))
+                // 2. Color Injection
+                if (!string.IsNullOrEmpty(output.Color))
+                {
+                    string colorState = PluginProcessor.ResolveTemplate(output.Color, inputs);
+                    string currentColor = InfoService.Instance.GetValue(injectKey + ".Color");
+                    
+                    if (colorState != currentColor)
                     {
-                        string colorState = PluginProcessor.ResolveTemplate(output.Color, inputs);
                         InfoService.Instance.InjectValue(injectKey + ".Color", colorState);
                     }
+                }
 
-                    // Inject Unit
-                    if (!string.IsNullOrEmpty(output.Unit))
+                // 3. Unit Injection
+                if (!string.IsNullOrEmpty(output.Unit))
+                {
+                    string resolvedUnit = PluginProcessor.ResolveTemplate(output.Unit, inputs);
+                    string currentUnit = InfoService.Instance.GetValue(injectKey + ".Unit");
+
+                    if (resolvedUnit != currentUnit)
                     {
-                        string resolvedUnit = PluginProcessor.ResolveTemplate(output.Unit, inputs);
                         InfoService.Instance.InjectValue(injectKey + ".Unit", resolvedUnit);
                     }
+                }
 
-                    // Dynamic Label Update Logic
-                    string itemKey = PluginConstants.DASH_PREFIX + injectKey;
-                    
-                    string labelPattern = !string.IsNullOrEmpty(output.Label) ? output.Label : (tmpl.Meta.Name + " " + output.Key);
-                    
-                    string newName = PluginProcessor.ResolveTemplate(labelPattern, inputs);
-                    string newShort = PluginProcessor.ResolveTemplate(output.ShortLabel ?? "", inputs);
-                    
-                    // Apply default values for missing inputs in labels
-                    if (tmpl.Inputs != null)
+                // 4. Dynamic Label Logic
+                string itemKey = PluginConstants.DASH_PREFIX + injectKey;
+                string labelPattern = !string.IsNullOrEmpty(output.Label) ? output.Label : (tmpl.Meta.Name + " " + output.Key);
+                
+                string newName = PluginProcessor.ResolveTemplate(labelPattern, inputs);
+                string newShort = PluginProcessor.ResolveTemplate(output.ShortLabel ?? "", inputs);
+                
+                // Apply default values for missing inputs in labels
+                if (tmpl.Inputs != null)
+                {
+                    foreach (var input in tmpl.Inputs)
                     {
-                        foreach (var input in tmpl.Inputs)
+                        if (!inputs.ContainsKey(input.Key))
                         {
-                            if (!inputs.ContainsKey(input.Key))
-                            {
-                                newName = newName.Replace("{{" + input.Key + "}}", input.DefaultValue);
-                                newShort = newShort.Replace("{{" + input.Key + "}}", input.DefaultValue);
-                            }
+                            newName = newName.Replace("{{" + input.Key + "}}", input.DefaultValue);
+                            newShort = newShort.Replace("{{" + input.Key + "}}", input.DefaultValue);
                         }
                     }
+                }
 
-                    // [Refactor] Decouple from Settings.MonitorItems
-                    // Instead of modifying Settings directly (SRP Violation & Race Condition),
-                    // we inject the dynamic labels into InfoService as properties.
-                    // The UI (MetricItem) will read these properties at runtime.
-                    InfoService.Instance.InjectValue("PROP.Label." + itemKey, newName);
-                    InfoService.Instance.InjectValue("PROP.ShortLabel." + itemKey, newShort);
-                    
-                    // Notify schema change only if this is the first time we see this item 
-                    // or if significant change happens (Optional, maybe not needed if UI binds to InfoService)
-                    // For now, we assume UI refreshes periodically or on specific events.
-                    // If we need to trigger a full layout rebuild, we might need an event, 
-                    // but standard label text updates are handled by invalidating the control.
+                // [Optimization] Avoid injecting identical labels repeatedly
+                string propLabelKey = "PROP.Label." + itemKey;
+                string propShortKey = "PROP.ShortLabel." + itemKey;
+
+                if (InfoService.Instance.GetValue(propLabelKey) != newName)
+                {
+                    InfoService.Instance.InjectValue(propLabelKey, newName);
+                }
+
+                if (InfoService.Instance.GetValue(propShortKey) != newShort)
+                {
+                    InfoService.Instance.InjectValue(propShortKey, newShort);
                 }
             }
-            
-            // Removed direct Settings modification logic
-            // OnSchemaChanged?.Invoke(); // Only needed if structure changes (Add/Remove), not for label updates
         }
 
         private void HandleExecutionError(PluginInstanceConfig inst, PluginTemplate tmpl, string keySuffix, Exception ex)

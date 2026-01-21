@@ -364,6 +364,9 @@ namespace LiteMonitor
                     case 3: // 历史流量
                         OpenTrafficHistory();
                         break;
+                    case 4: // 清理内存
+                        CleanMemory();
+                        break;
                     case 0: // 默认：切换横竖屏
                     default:
                         ToggleLayoutMode();
@@ -463,6 +466,21 @@ namespace LiteMonitor
 
 
         // ★★★ 新增：通用动作方法 (供 TaskbarForm 和 本地调用) ★★★
+        public async void CleanMemory()
+        {
+            try
+            {
+                using (var form = new CleanMemoryForm())
+                {
+                    await form.StartCleaningAsync();
+                }
+            }
+            catch { }
+
+            // 成功通知 (可选：因为窗口里已经显示 OK 了，这里可以去掉，或者保留作为双重反馈)
+            // ShowNotification("LiteMonitor", LanguageManager.T("Menu.CleanMemorySuccess"), ToolTipIcon.Info);
+        }
+
         public void OpenTaskManager()
         {
             try

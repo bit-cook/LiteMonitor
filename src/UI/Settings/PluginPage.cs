@@ -18,13 +18,34 @@ namespace LiteMonitor.src.UI.SettingsPage
         // Track modified instances for batch restart on Save
         private HashSet<string> _modifiedInstanceIds = new HashSet<string>();
 
+        // [Fix] Custom Panel without WS_EX_COMPOSITED to prevent "Unable to set Win32 parent" crash
+        // when dynamically toggling visibility of deeply nested controls.
+        private class SafeBufferedPanel : Panel
+        {
+            public SafeBufferedPanel()
+            {
+                this.DoubleBuffered = true;
+                this.SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.UserPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+                this.UpdateStyles();
+            }
+            protected override void WndProc(ref Message m)
+            {
+                if (m.Msg == 0x0014) // WM_ERASEBKGND
+                {
+                    m.Result = (IntPtr)1;
+                    return;
+                }
+                base.WndProc(ref m);
+            }
+        }
+
         public PluginPage()
         {
             this.BackColor = UIColors.MainBg;
             this.Dock = DockStyle.Fill;
             this.Padding = new Padding(0);
 
-            _container = new BufferedPanel 
+            _container = new SafeBufferedPanel 
             { 
                 Dock = DockStyle.Fill, 
                 AutoScroll = true, 
@@ -206,7 +227,10 @@ namespace LiteMonitor.src.UI.SettingsPage
 
             // Real-time visibility toggle
             chk.CheckedChanged += (s, e) => {
+                // [Fix] Suspend layout to avoid flickering and handle churn
+                group.SuspendLayout();
                 foreach (var c in targetVisibles) c.Visible = chk.Checked;
+                group.ResumeLayout();
             };
 
             // 3. Refresh Rate
