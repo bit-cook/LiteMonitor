@@ -811,6 +811,20 @@ namespace LiteMonitor
                 // 确保你已经创建了 src/WebServer/LiteWebServer.cs
                 src.WebServer.LiteWebServer.Instance?.Start();
             }
+
+            // ★★★ 修复：开机自启后置顶可能失效的问题 ★★★
+            // 必须在所有初始化完成后，延迟强制刷新一次 TopMost 状态
+            // 因为系统启动高负载时，TopMost 属性容易被其他窗口抢占或丢失
+            if (_cfg.TopMost)
+            {
+                this.BeginInvoke(new Action(() =>
+                {
+                    // 强制 Toggle 一次触发 Win32 样式更新
+                    this.TopMost = false;
+                    this.TopMost = true;
+                    this.BringToFront(); // 额外尝试拉到最前
+                }));
+            }
         }
 
         // [新增] 串行检查更新和驱动

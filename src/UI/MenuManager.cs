@@ -363,6 +363,26 @@ namespace LiteMonitor
             // ==================================================================================
             var monitorRoot = new ToolStripMenuItem(LanguageManager.T("Menu.MonitorItemDisplay"));
 
+            // [新增] 插件管理入口 (Emoji + 跳转)
+            var pluginMgr = new ToolStripMenuItem("🧩 " + LanguageManager.T("Menu.Plugins")); 
+            pluginMgr.Click += (_, __) => 
+            {
+                try
+                {
+                    using (var f = new LiteMonitor.src.UI.SettingsForm(cfg, ui, form))
+                    {
+                        f.SwitchPage("Plugins"); 
+                        f.ShowDialog(form);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show("Open Settings Failed: " + ex.Message);
+                }
+            };
+            monitorRoot.DropDownItems.Add(pluginMgr);
+            monitorRoot.DropDownItems.Add(new ToolStripSeparator());
+
             // --- 内部辅助函数：首次开启时的最大值设定引导 ---
             void CheckAndRemind(string name)
             {
@@ -504,42 +524,88 @@ namespace LiteMonitor
                 var sortedItems = cfg.MonitorItems.OrderBy(x => x.SortIndex).ToList();
                 var groups = sortedItems.GroupBy(x => x.UIGroup); // 利用 UIGroup 自动识别 HOST
 
+                // 辅助函数：创建单个菜单项
+                ToolStripMenuItem CreateItemMenu(MonitorItemConfig itemConfig)
+                {
+                     // ★★★ [Fix] 同步运行时动态标签 (InfoService -> Config) ★★★
+                    string dynLabel = LiteMonitor.src.SystemServices.InfoService.InfoService.Instance.GetValue("PROP.Label." + itemConfig.Key);
+                    if (!string.IsNullOrEmpty(dynLabel)) itemConfig.DynamicLabel = dynLabel;
+
+                    string dynShort = LiteMonitor.src.SystemServices.InfoService.InfoService.Instance.GetValue("PROP.ShortLabel." + itemConfig.Key);
+                    if (!string.IsNullOrEmpty(dynShort)) itemConfig.DynamicTaskbarLabel = dynShort;
+                    
+                    // Label: DisplayLabel > Loc(Items.Key) > Key
+                    string def = LanguageManager.T(UIUtils.Intern("Items." + itemConfig.Key));
+                    if (def.StartsWith("Items.")) def = itemConfig.Key;
+                    string label = !string.IsNullOrEmpty(itemConfig.DisplayLabel) ? itemConfig.DisplayLabel : def;
+
+                    var itemMenu = new ToolStripMenuItem(label)
+                    {
+                        Checked = itemConfig.VisibleInPanel,
+                        CheckOnClick = true,
+                        Tag = itemConfig // Store context
+                    };
+
+                    itemMenu.CheckedChanged += onPanelItemCheck;
+
+                    if (IsHardwareItem(itemConfig.Key))  
+                        itemMenu.ToolTipText = LanguageManager.T("Menu.CalibrationTip");
+                        
+                    return itemMenu;
+                }
+
+                // 定义需要纯开关模式的组 (点击组名即全开/全关，无子项)
+                var toggleGroups = new HashSet<string> { "DISK", "NET", "DATA" };
+
                 foreach (var g in groups)
                 {
                     // 分组标题
                     string gName = LanguageManager.T(UIUtils.Intern("Groups." + g.Key));
                     if (cfg.GroupAliases.ContainsKey(g.Key)) gName = cfg.GroupAliases[g.Key];
                     
-                    monitorRoot.DropDownItems.Add(new ToolStripMenuItem(gName) { Enabled = false, ForeColor = Color.Gray });
-
-                    foreach (var itemConfig in g)
+                    if (g.Key == "BAT")
                     {
-                        // ★★★ [Fix] 同步运行时动态标签 (InfoService -> Config) ★★★
-                        string dynLabel = LiteMonitor.src.SystemServices.InfoService.InfoService.Instance.GetValue("PROP.Label." + itemConfig.Key);
-                        if (!string.IsNullOrEmpty(dynLabel)) itemConfig.DynamicLabel = dynLabel;
-
-                        string dynShort = LiteMonitor.src.SystemServices.InfoService.InfoService.Instance.GetValue("PROP.ShortLabel." + itemConfig.Key);
-                        if (!string.IsNullOrEmpty(dynShort)) itemConfig.DynamicTaskbarLabel = dynShort;
-                        
-                        // Label: DisplayLabel > Loc(Items.Key) > Key
-                        string def = LanguageManager.T(UIUtils.Intern("Items." + itemConfig.Key));
-                        if (def.StartsWith("Items.")) def = itemConfig.Key;
-                        string label = !string.IsNullOrEmpty(itemConfig.DisplayLabel) ? itemConfig.DisplayLabel : def;
-
-                        var itemMenu = new ToolStripMenuItem(label)
+                        // 电池组：保持折叠子项模式
+                        var batRoot = new ToolStripMenuItem(gName);
+                        foreach (var itemConfig in g)
                         {
-                            Checked = itemConfig.VisibleInPanel,
-                            CheckOnClick = true,
-                            Tag = itemConfig // Store context
-                        };
-
-                        itemMenu.CheckedChanged += onPanelItemCheck;
-
-                        if (IsHardwareItem(itemConfig.Key))  
-                            itemMenu.ToolTipText = LanguageManager.T("Menu.CalibrationTip");
-
-                        monitorRoot.DropDownItems.Add(itemMenu);
+                            batRoot.DropDownItems.Add(CreateItemMenu(itemConfig));
+                        }
+                        monitorRoot.DropDownItems.Add(batRoot);
                     }
+                    else if (toggleGroups.Contains(g.Key))
+                    {
+                        // 磁盘/网络/流量：纯开关模式 (无子项)
+                        // 使用 CheckOnClick = true 简化逻辑，自动处理 UI 勾选状态
+                        var groupItem = new ToolStripMenuItem(gName)
+                        {
+                            CheckOnClick = true,
+                            Checked = g.Any(x => x.VisibleInPanel)
+                        };
+                        
+                        // 事件: 状态改变时同步到所有子项
+                        groupItem.CheckedChanged += (s, e) => 
+                        {
+                            bool newState = groupItem.Checked;
+                            foreach (var itemConfig in g)
+                                itemConfig.VisibleInPanel = newState;
+                            
+                            cfg.Save();
+                            if (ui != null) ui.RebuildLayout();
+                        };
+                        
+                        monitorRoot.DropDownItems.Add(groupItem);
+                    }
+                    else
+                    {
+                        // 其他组：平铺模式 (标题不可点 + 子项列表)
+                        monitorRoot.DropDownItems.Add(new ToolStripMenuItem(gName) { Enabled = false, ForeColor = Color.Gray });
+                        foreach (var itemConfig in g)
+                        {
+                            monitorRoot.DropDownItems.Add(CreateItemMenu(itemConfig));
+                        }
+                    }
+                    
                     monitorRoot.DropDownItems.Add(new ToolStripSeparator());
                 }
                 
