@@ -438,7 +438,9 @@ namespace LiteMonitor.src.WebServer
                         
                         double rawPct = 0;
                         // Case A: 原生百分比类型 (Load / Temp / Mem) 或单位为 %
-                        if (item.Key.Contains("Load") || item.Key.Contains("Temp") || unit.Contains("%"))
+                        // ★★★ [修复] 显式检查 Memory 类型，确保在容量显示模式下(单位变为GB)进度条依然正常 ★★★
+                        var mType = MetricUtils.GetType(item.Key);
+                        if (mType == MetricType.Memory || item.Key.Contains("Load") || item.Key.Contains("Temp") || unit.Contains("%"))
                         {
                             // Load 和 Temp 本身数值就是 0-100 (或近似)，直接除以 100 归一化
                             // 注意：Temp 主界面也是当作 0-100 处理的 (虽然理论可以更高，但 100度 满条是合理的)
@@ -476,12 +478,15 @@ namespace LiteMonitor.src.WebServer
                     }
 
                     // Primary Logic
-                     if (groupId == "NET" || groupId == "DISK" || groupId == "DATA") 
-                         isPrimary = true;
-                     else if (item.Key.StartsWith("NET") || item.Key.StartsWith("DISK") || item.Key.StartsWith("DATA"))
-                         isPrimary = true;
-                     else if (item.Key.Contains("Load") || item.Key.Contains("Temp") || groupId == "MEM")
-                         isPrimary = true;
+                    // 1. 核心硬件组：强制锁定特定的核心指标 (CPU/GPU/MEM/BAT)
+                    if (item.Key == "BAT.Percent") isPrimary = true;
+                    else if (item.Key == "CPU.Load") isPrimary = true;
+                    else if (item.Key == "MEM.Load") isPrimary = true;
+                    else if (item.Key == "GPU.Core.Load" || item.Key == "GPU.Load") isPrimary = true;
+                    
+                    // 2. 其他所有情况：一律不显示圆圈 (包括网络、磁盘、主板温度等)
+                    // 用户明确要求：理论上只需要上面这四个核心指标显示为圆圈
+                    else isPrimary = false;
                 }
 
                 if (string.IsNullOrEmpty(valStr)) valStr = "--";
