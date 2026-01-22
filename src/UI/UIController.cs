@@ -25,6 +25,7 @@ namespace LiteMonitor
         private List<Column> _hxColsHorizontal = new();
         private List<Column> _hxColsTaskbar = new();
         private HorizontalLayout? _hxLayout;
+        private Dictionary<string, DateTime> _overheatStartTimes = new Dictionary<string, DateTime>();
         public MainForm MainForm => (MainForm)_form;
 
         public List<Column> GetTaskbarColumns() => _hxColsTaskbar;
@@ -431,7 +432,12 @@ namespace LiteMonitor
         
         private void CheckTemperatureAlert()
         {
-            if (!_cfg.AlertTempEnabled) return;
+            if (!_cfg.AlertTempEnabled) 
+            {
+                _overheatStartTimes.Clear();
+                return;
+            }
+
             if ((DateTime.Now - _cfg.LastAlertTime).TotalMinutes < 3) return;
 
             int globalThreshold = _cfg.AlertTempThreshold; 
@@ -440,21 +446,29 @@ namespace LiteMonitor
             List<string> alertLines = new List<string>();
             string alertTitle = LanguageManager.T("Menu.AlertTemp"); 
 
-            float? cpuTemp = _mon.Get("CPU.Temp");
-            if (cpuTemp.HasValue && cpuTemp.Value >= globalThreshold)
-                alertLines.Add($"CPU {alertTitle}: 🔥{cpuTemp:F0}°C");
+            void Check(string key, float? val, int threshold, string label, string msgSuffix = "")
+            {
+                if (val.HasValue && val.Value >= threshold)
+                {
+                    if (!_overheatStartTimes.ContainsKey(key))
+                        _overheatStartTimes[key] = DateTime.Now;
+                    
+                    if ((DateTime.Now - _overheatStartTimes[key]).TotalSeconds >= 5)
+                    {
+                        alertLines.Add($"{label} {alertTitle}: 🔥{val:F0}°C{msgSuffix}");
+                    }
+                }
+                else
+                {
+                    if (_overheatStartTimes.ContainsKey(key))
+                        _overheatStartTimes.Remove(key);
+                }
+            }
 
-            float? gpuTemp = _mon.Get("GPU.Temp");
-            if (gpuTemp.HasValue && gpuTemp.Value >= globalThreshold)
-                alertLines.Add($"GPU {alertTitle}: 🔥{gpuTemp:F0}°C");
-
-            float? moboTemp = _mon.Get("MOBO.Temp");
-            if (moboTemp.HasValue && moboTemp.Value >= globalThreshold)
-                alertLines.Add($"MOBO {alertTitle}: 🔥{moboTemp:F0}°C");
-
-            float? diskTemp = _mon.Get("DISK.Temp");
-            if (diskTemp.HasValue && diskTemp.Value >= diskThreshold)
-                alertLines.Add($"DISK {alertTitle}: 🔥{diskTemp:F0}°C (>{diskThreshold}°C)");
+            Check("CPU.Temp", _mon.Get("CPU.Temp"), globalThreshold, "CPU");
+            Check("GPU.Temp", _mon.Get("GPU.Temp"), globalThreshold, "GPU");
+            Check("MOBO.Temp", _mon.Get("MOBO.Temp"), globalThreshold, "MOBO");
+            Check("DISK.Temp", _mon.Get("DISK.Temp"), diskThreshold, "DISK", $" (>{diskThreshold}°C)");
 
             if (alertLines.Count > 0)
             {

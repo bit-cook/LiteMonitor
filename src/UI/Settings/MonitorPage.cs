@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Windows.Forms;
 using LiteMonitor.src.Core;
 using LiteMonitor.src.UI.Controls;
+using LiteMonitor.src.Core.Actions;
 
 namespace LiteMonitor.src.UI.SettingsPage
 {
@@ -455,22 +456,10 @@ namespace LiteMonitor.src.UI.SettingsPage
         {
             if (!_isLoaded || Config == null || _workingList == null) return;
             
-            Config.HorizontalFollowsTaskbar = _chkLinkHorizontal.Checked;
-            
             SaveToWorkingList();
-
-            var activeKeys = new HashSet<string>(Config.MonitorItems.Select(x => x.Key));
-            var mergedList = _workingList.Where(x => activeKeys.Contains(x.Key)).ToList();
             
-            var workingKeys = new HashSet<string>(_workingList.Select(x => x.Key));
-            var newItems = Config.MonitorItems.Where(x => !workingKeys.Contains(x.Key)).ToList();
-            if (newItems.Count > 0)
-            {
-                mergedList.AddRange(newItems);
-            }
-
-            Config.MonitorItems = mergedList;
-            Config.SyncToLanguage();
+            // Delegate logic to SettingsOperations
+            SettingsChanger.UpdateMonitorList(Config, _workingList, _chkLinkHorizontal.Checked);
         }
 
         private List<MonitorItemConfig> GetLCS(List<MonitorItemConfig> list1, List<MonitorItemConfig> list2)

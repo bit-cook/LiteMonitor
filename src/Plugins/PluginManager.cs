@@ -284,14 +284,13 @@ namespace LiteMonitor.src.Plugins
             var cts = new System.Threading.CancellationTokenSource();
             _cts[inst.Id] = cts;
 
-            // 立即执行一次
-            Task.Run(() => _executor.ExecuteInstanceAsync(inst, tmpl, cts.Token));
-
             // 设定间隔 (单位：秒)
             int interval = inst.CustomInterval > 0 ? inst.CustomInterval : tmpl.Execution.Interval;
             if (interval < PluginConstants.DEFAULT_INTERVAL) interval = PluginConstants.DEFAULT_INTERVAL;
 
-            var newTimer = new System.Timers.Timer(interval * 1000); 
+            // 使用 Timer 统一调度：初始间隔设为极短(例如 50ms)以触发立即执行
+            // 这样第一次执行的结果也能被捕获，从而触发失败重试逻辑
+            var newTimer = new System.Timers.Timer(50); 
             newTimer.AutoReset = false; // Stop-Wait 模式
             
             newTimer.Elapsed += async (s, e) => 
@@ -328,6 +327,34 @@ namespace LiteMonitor.src.Plugins
             
             newTimer.Start();
             _timers[inst.Id] = newTimer;
+            
+            // ★★★ Inject Initial Loading State ★★★
+            InitDefaultValues(inst, tmpl);
+        }
+
+        private void InitDefaultValues(PluginInstanceConfig inst, PluginTemplate tmpl)
+        {
+            if (tmpl.Outputs == null) return;
+            
+            // Logic must match PluginExecutor to generate correct keys
+            int targetCount = (inst.Targets != null && inst.Targets.Count > 0) ? inst.Targets.Count : 1;
+            bool hasTargets = (inst.Targets != null && inst.Targets.Count > 0);
+
+            for (int i = 0; i < targetCount; i++)
+            {
+                string keySuffix = hasTargets ? $".{i}" : "";
+                
+                foreach (var output in tmpl.Outputs)
+                {
+                    string injectKey = inst.Id + keySuffix + "." + output.Key;
+                    
+                    // Only inject if currently empty to avoid flashing "..." on reload if data exists
+                    if (string.IsNullOrEmpty(InfoService.Instance.GetValue(injectKey)))
+                    {
+                        InfoService.Instance.InjectValue(injectKey, PluginConstants.STATUS_LOADING);
+                    }
+                }
+            }
         }
 
         // 委托给 Service 的 UI 辅助方法

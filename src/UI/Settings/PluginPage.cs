@@ -6,6 +6,7 @@ using System.Windows.Forms;
 using LiteMonitor;
 using System.Diagnostics;
 using LiteMonitor.src.Core;
+using LiteMonitor.src.Core.Actions;
 using LiteMonitor.src.Plugins;
 using LiteMonitor.src.UI.Controls;
 
@@ -77,11 +78,10 @@ namespace LiteMonitor.src.UI.SettingsPage
         public override void OnShow()
         {
             base.OnShow();
-            if (!_isLoaded)
-            {
-                RebuildUI();
-                _isLoaded = true;
-            }
+            // Always rebuild UI on show to prevent Handle creation issues with deeply nested controls
+            // when switching back to this page.
+            RebuildUI();
+            _isLoaded = true;
         }
 
         private bool _isLoaded = false;
@@ -461,16 +461,8 @@ namespace LiteMonitor.src.UI.SettingsPage
                  }
             }
 
-            if (Config != null)
-            {
-                Config.PluginInstances.Add(newInst);
-                Config.Save();
-            }
-            else
-            {
-                Settings.Load().PluginInstances.Add(newInst);
-                Settings.Load().Save();
-            }
+            var targetConfig = Config ?? Settings.Load();
+            SettingsChanger.AddPlugin(targetConfig, newInst);
             
             PluginManager.Instance.RestartInstance(newInst.Id);
             
@@ -481,16 +473,8 @@ namespace LiteMonitor.src.UI.SettingsPage
         {
             if (MessageBox.Show(LanguageManager.T("Menu.PluginDeleteConfirm"), LanguageManager.T("Menu.OK"), MessageBoxButtons.YesNo) == DialogResult.Yes)
             {
-                if (Config != null)
-                {
-                    Config.PluginInstances.Remove(inst);
-                    Config.Save();
-                }
-                else
-                {
-                    Settings.Load().PluginInstances.Remove(inst);
-                    Settings.Load().Save();
-                }
+                var targetConfig = Config ?? Settings.Load();
+                SettingsChanger.RemovePlugin(targetConfig, inst);
 
                 PluginManager.Instance.RemoveInstance(inst.Id);
                 RebuildUI();

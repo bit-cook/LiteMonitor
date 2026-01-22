@@ -4,6 +4,7 @@ using System.Drawing;
 using System.IO;
 using System.Windows.Forms;
 using LiteMonitor.src.Core;
+using LiteMonitor.src.Core.Actions;
 using LiteMonitor.src.UI.Controls;
 using LiteMonitor.src.UI.SettingsPage;
 
@@ -11,7 +12,8 @@ namespace LiteMonitor.src.UI
 {
     public class SettingsForm : Form
     {
-        private Settings _cfg;
+        private Settings _cfg; // Live Settings
+        private Settings _draftCfg; // Draft Settings
         private UIController _ui;
         private MainForm _mainForm;
         
@@ -47,7 +49,13 @@ namespace LiteMonitor.src.UI
 
         public SettingsForm(Settings cfg, UIController ui, MainForm mainForm)
         { 
-            _cfg = cfg; _ui = ui; _mainForm = mainForm;
+            _cfg = cfg; 
+            _ui = ui; 
+            _mainForm = mainForm;
+            
+            // ★★★ Draft 机制核心：创建深拷贝 ★★★
+            _draftCfg = _cfg.DeepClone();
+            
             InitializeComponent(); 
             
             // ★★★ 关键点 1：构造时就初始化所有页面 ★★★
@@ -149,7 +157,8 @@ namespace LiteMonitor.src.UI
 
         private void AddNav(string key, string text, SettingsPageBase page)
         {
-            page.SetContext(_cfg, _mainForm, _ui);
+            // ★★★ 关键点 2：将 Draft 传递给页面，而不是 Live Settings ★★★
+            page.SetContext(_draftCfg, _mainForm, _ui);
             _pages[key] = page;
             var btn = new LiteNavBtn(text) { Tag = key };
             btn.Click += (s, e) => SwitchPage(key);
@@ -187,8 +196,8 @@ namespace LiteMonitor.src.UI
                     targetPage.Size = _pnlContent.ClientSize; 
                     targetPage.Dock = DockStyle.Fill; // 双保险
 
-                    targetPage.OnShow();
                     _pnlContent.Controls.Add(targetPage);
+                    targetPage.OnShow();
                 }
                 finally
                 {
@@ -212,7 +221,22 @@ namespace LiteMonitor.src.UI
                 _pages["Monitor"].Save();
             }
             
+            // ★★★ Draft 机制核心：提交事务 ★★★
+            // 1. 全局校验 (防止全隐藏死锁)
+            if (_draftCfg.HideMainForm && _draftCfg.HideTrayIcon && !_draftCfg.ShowTaskbar)
+            {
+                // 自动纠正：如果都隐藏了，强制显示托盘
+                _draftCfg.HideTrayIcon = false;
+                MessageBox.Show(LanguageManager.T("Menu.AllHiddenWarning"), "LiteMonitor", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+
+            // 2. 合并变更到 Live Settings
+            SettingsChanger.Merge(_cfg, _draftCfg);
+
+            // 3. 持久化保存
             _cfg.Save();
+            
+            // 4. 应用副作用 (刷新界面)
             AppActions.ApplyAllSettings(_cfg, _mainForm, _ui);
         }
     }

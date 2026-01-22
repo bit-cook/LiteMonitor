@@ -64,7 +64,10 @@ namespace LiteMonitor
                 }
             }
 
-            s.SyncToLanguage();
+            // [Fix] Removed redundant SyncToLanguage call. 
+            // Caller (AppActions.ApplyAllSettings) is responsible for syncing language state.
+            // s.SyncToLanguage();
+            
             s.InternAllStrings();
             
             return s;
@@ -137,7 +140,9 @@ namespace LiteMonitor
                 new MonitorItemConfig { Key = "DATA.DayDown",SortIndex = 802, VisibleInPanel = true },
             };
         }
-
+        // [Sync] 同步到语言设置
+        // 作用：将配置中的组别名和监控项标签同步到语言管理器
+        // 注意：这会清除所有当前的语言覆盖
         public static void SyncToLanguage(this Settings settings)
         {
             LanguageManager.ClearOverrides();

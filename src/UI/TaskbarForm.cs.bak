@@ -58,7 +58,8 @@ namespace LiteMonitor
             _wmTaskbarCreated = RegisterWindowMessage("TaskbarCreated");
             
             _bizHelper.AttachToTaskbar();
-            _winHelper.ApplyLayeredStyle(_bizHelper.TransparentKey, _cfg.TaskbarClickThrough);
+            _winHelper.ApplyLayeredStyle(_bizHelper.TransparentKey);
+            _winHelper.SetClickThrough(_cfg.TaskbarClickThrough);
 
             _timer.Interval = Math.Max(_cfg.RefreshMs, 60);
             _timer.Tick += (_, __) => Tick();
@@ -70,7 +71,8 @@ namespace LiteMonitor
         public void ReloadLayout()
         {
             _layout = new HorizontalLayout(ThemeManager.Current, 300, LayoutMode.Taskbar, _cfg);
-            _winHelper.ApplyLayeredStyle(_bizHelper.TransparentKey, _cfg.TaskbarClickThrough);
+            _winHelper.ApplyLayeredStyle(_bizHelper.TransparentKey);
+            _winHelper.SetClickThrough(_cfg.TaskbarClickThrough);
             _bizHelper.CheckTheme(true);
 
             if (_cols != null && _cols.Count > 0)

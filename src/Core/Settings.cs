@@ -154,6 +154,12 @@ namespace LiteMonitor
         }
 
         // Helper method to get taskbar style moved to SettingsHelper
+
+        public Settings DeepClone()
+        {
+            var json = System.Text.Json.JsonSerializer.Serialize(this);
+            return System.Text.Json.JsonSerializer.Deserialize<Settings>(json) ?? new Settings();
+        }
     }
 
     public class MonitorItemConfig

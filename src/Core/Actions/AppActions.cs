@@ -6,7 +6,7 @@ using LiteMonitor.src.SystemServices;
 using LiteMonitor.src.WebServer; // ★★★ 引用 WebServer 命名空间 ★★★
 using LiteMonitor.src.Plugins;
 
-namespace LiteMonitor.src.Core
+namespace LiteMonitor.src.Core.Actions
 {
     /// <summary>
     /// 全局动作执行器
