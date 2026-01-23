@@ -23,6 +23,9 @@ namespace LiteMonitor
         private List<Column>? _cols;
         private ContextMenuStrip? _currentMenu;
         private uint _wmTaskbarCreated;
+        // [Fix] 使用时间戳控制重试，避免高刷新率下重试次数瞬间耗尽
+        private DateTime _retryEndTime = DateTime.MinValue;
+        private DateTime _lastFindHandleTime = DateTime.MinValue;
 
         // 公开属性
         public string TargetDevice { get; private set; } = "";
@@ -97,7 +100,14 @@ namespace LiteMonitor
         {
             if (m.Msg == (int)_wmTaskbarCreated)
             {
+                // Explorer重启后，连续重试10秒以确保获取稳定句柄(覆盖托盘初始化延迟)
+                _retryEndTime = DateTime.Now.AddSeconds(10);
+                
                 _bizHelper.FindHandles();
+                _lastFindHandleTime = DateTime.Now;
+
+                // [Fix] 必须更新任务栏坐标，否则会使用旧坐标导致位置错乱
+                _bizHelper.UpdateTaskbarRect();
                 _bizHelper.AttachToTaskbar();
                 if (Width > 0) _bizHelper.UpdatePlacement(Width);
                 return;
@@ -145,6 +155,18 @@ namespace LiteMonitor
 
         private void Tick()
         {
+            // [Fix] 周期性检查句柄，防止 Explorer 重启后句柄失效
+            // 优化：仅在重试期或句柄无效时调用 FindHandles，且限制调用频率
+            bool isInRetryPeriod = DateTime.Now < _retryEndTime;
+            bool isHandleInvalid = !_bizHelper.IsTaskbarValid();
+            
+            // 如果处于重试期，或者句柄无效且距离上次查找超过2秒(防止无Explorer时高频空转)
+            if (isInRetryPeriod || (isHandleInvalid && (DateTime.Now - _lastFindHandleTime).TotalSeconds > 2))
+            {
+                _bizHelper.FindHandles();
+                _lastFindHandleTime = DateTime.Now;
+            }
+
             if (Environment.TickCount % 5000 < _cfg.RefreshMs) _bizHelper.CheckTheme();
 
             _cols = _ui.GetTaskbarColumns();

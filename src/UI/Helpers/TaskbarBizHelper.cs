@@ -89,6 +89,12 @@ namespace LiteMonitor.src.UI.Helpers
             _hTray = handles.hTray;
         }
 
+        public bool IsTaskbarValid()
+        {
+            if (_hTaskbar == IntPtr.Zero) return false;
+            return TaskbarWinHelper.IsWindow(_hTaskbar);
+        }
+
         public void AttachToTaskbar()
         {
             if (_hTaskbar == IntPtr.Zero) FindHandles();

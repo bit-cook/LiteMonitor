@@ -322,6 +322,10 @@ namespace LiteMonitor.src.SystemServices
                     // 用户反馈 #199: Battery level shows Degradation level
                     if (Has(name, "Degradation") || Has(name, "Wear")) return null;
                     
+                    // ★★★ 优先选择包含 "Charge" 的传感器 ★★★
+                    if (Has(name, "Charge")) return "BAT.Percent";
+                    
+                    // 其他作为备选 (Weak)
                     return "BAT.Percent";
                 }
                 if (s.SensorType == SensorType.Power) return "BAT.Power";
