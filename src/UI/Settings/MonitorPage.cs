@@ -312,10 +312,15 @@ namespace LiteMonitor.src.UI.SettingsPage
             
             foreach (var item in _workingList)
             {
-                if (!string.IsNullOrEmpty(item.UserLabel))
-                    LanguageManager.SetOverride(UIUtils.Intern("Items." + item.Key), item.UserLabel);
-                if (!string.IsNullOrEmpty(item.TaskbarLabel))
-                    LanguageManager.SetOverride(UIUtils.Intern("Short." + item.Key), item.TaskbarLabel);
+                // [Fix] Use MetricLabelResolver to get the best available label (User > InfoService > Dynamic)
+                // This ensures that plugin items show their dynamic labels even in the settings list
+                string resolvedLabel = MetricLabelResolver.ResolveLabel(item);
+                if (!string.IsNullOrEmpty(resolvedLabel))
+                    LanguageManager.SetOverride(UIUtils.Intern("Items." + item.Key), resolvedLabel);
+
+                string resolvedShort = MetricLabelResolver.ResolveShortLabel(item);
+                if (!string.IsNullOrEmpty(resolvedShort))
+                    LanguageManager.SetOverride(UIUtils.Intern("Short." + item.Key), resolvedShort);
             }
         }
 

@@ -392,12 +392,19 @@ namespace LiteMonitor.src.WebServer
             foreach (var item in itemsCopy)
             {
 
-                // [Refactor] 使用统一解析器
-                string labelResolved = MetricLabelResolver.ResolveLabel(item);
-
-                string displayName = !string.IsNullOrEmpty(labelResolved)
-                    ? labelResolved
-                    : LanguageManager.T("Items." + item.Key);
+                string displayName;
+                // [Fix] WebUI should also use MetricLabelResolver to show dynamic names
+                string resolved = MetricLabelResolver.ResolveLabel(item);
+                if (!string.IsNullOrEmpty(resolved))
+                {
+                    displayName = resolved;
+                }
+                else
+                {
+                    displayName = LanguageManager.T(UIUtils.Intern("Items." + item.Key));
+                    // 如果翻译失败 (fallback to key suffix)
+                    if (displayName.StartsWith("Items.")) displayName = displayName.Split('.')[1];
+                }
                 
                 string groupId = item.UIGroup.ToUpper();
                 string groupDisplay = LanguageManager.T("Groups." + item.UIGroup);

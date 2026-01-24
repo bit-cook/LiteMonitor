@@ -63,7 +63,8 @@ namespace LiteMonitor.src.UI.SettingsPage
             if (_modifiedInstanceIds.Count > 0)
             {
                 // Use Config property to access the latest in-memory state
-                var instances = Config?.PluginInstances ?? Settings.Load().PluginInstances;
+                var instances = Config?.PluginInstances;
+                if (instances == null) return;
                 var liveSettings = Settings.Load();
 
                 foreach (var id in _modifiedInstanceIds)
@@ -127,8 +128,9 @@ namespace LiteMonitor.src.UI.SettingsPage
             
             var templates = PluginManager.Instance.GetAllTemplates();
             // Use Config instead of Settings.Load() to ensure consistency with SettingsForm context
-            var instances = Config?.PluginInstances ?? Settings.Load().PluginInstances;
-
+            // [Fix] Prevent singleton pollution by avoiding Settings.Load() fallback
+            var instances = Config?.PluginInstances;
+            
             // 1. Hint Note with Link
             var linkDoc = new LiteLink(LanguageManager.T("Menu.PluginDevGuide"), () => {
                 try { 
@@ -446,14 +448,6 @@ namespace LiteMonitor.src.UI.SettingsPage
             _container.Controls.SetChildIndex(group, 0);
         }
 
-        private void SaveAndRestart(PluginInstanceConfig inst)
-        {
-            if (Config != null) Config.Save();
-            else Settings.Load().Save();
-
-            PluginManager.Instance.RestartInstance(inst.Id);
-        }
-
         private void CopyInstance(PluginInstanceConfig source)
         {
             var newInst = new PluginInstanceConfig
@@ -473,8 +467,8 @@ namespace LiteMonitor.src.UI.SettingsPage
                  }
             }
 
-            var targetConfig = Config ?? Settings.Load();
-            SettingsChanger.AddPlugin(targetConfig, newInst);
+            if (Config == null) return;
+            SettingsChanger.AddPlugin(Config, newInst);
             
             // Do NOT start instance immediately for Draft config.
             // It will be started when user clicks "Apply/Save" via _modifiedInstanceIds logic.
@@ -487,8 +481,8 @@ namespace LiteMonitor.src.UI.SettingsPage
         {
             if (MessageBox.Show(LanguageManager.T("Menu.PluginDeleteConfirm"), LanguageManager.T("Menu.OK"), MessageBoxButtons.YesNo) == DialogResult.Yes)
             {
-                var targetConfig = Config ?? Settings.Load();
-                SettingsChanger.RemovePlugin(targetConfig, inst);
+                if (Config == null) return;
+                SettingsChanger.RemovePlugin(Config, inst);
                 
                 // Do NOT call PluginManager.RemoveInstance directly for Draft.
                 // Just mark it as modified so Save() can handle cleanup (RestartInstance -> null/disabled logic).

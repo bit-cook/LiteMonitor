@@ -97,7 +97,7 @@ namespace LiteMonitor.src.UI.SettingsPage
             input.Input.Padding = UIUtils.S(new Padding(0, 5, 0, 1));
 
             // Immediate binding
-            input.Input.TextChanged += (s, e) => set(input.HexValue);
+            input.Input.Inner.TextChanged += (s, e) => set(input.HexValue);
             page.RegisterRefresh(() => input.HexValue = get());
             
             group.AddItem(new LiteSettingsItem(LanguageManager.T(titleKey), input));

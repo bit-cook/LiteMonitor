@@ -587,6 +587,21 @@ namespace LiteMonitor.src.Plugins
                     catch (Exception lblEx)
                     {
                         System.Diagnostics.Debug.WriteLine($"Label resolution failed during error handling: {lblEx.Message}");
+                        // [Fix] Fallback to raw pattern if template resolution fails, to avoid showing raw keys like DASH.GitHub.0.stats
+                        try 
+                        {
+                            string itemKey = PluginConstants.DASH_PREFIX + injectKey;
+                            string fallback = !string.IsNullOrEmpty(output.Label) ? output.Label : (tmpl.Meta.Name + " " + output.Key);
+                            
+                            // Remove template markers to make it look cleaner if possible
+                            if (fallback.Contains("{{")) 
+                            {
+                                // Simple cleanup: remove {{...}} parts or keep them, keeping them is better than nothing
+                            }
+
+                            InfoService.Instance.InjectValue("PROP.Label." + itemKey, fallback);
+                        }
+                        catch {}
                     }
                 }
             }
