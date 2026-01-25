@@ -140,6 +140,14 @@ namespace LiteMonitor.src.UI.Helpers
 
         public Rectangle GetTaskbarRect(IntPtr hTaskbar, string targetDevice)
         {
+            // 优先使用 GetWindowRect 获取真实窗口大小
+            // 修复 #213: Surface 等二合一设备在键盘连接/断开切换时，SHAppBarMessage 可能返回错误的缓存高度，导致显示异常
+            if (hTaskbar != IntPtr.Zero && GetWindowRect(hTaskbar, out RECT r))
+            {
+                return Rectangle.FromLTRB(r.left, r.top, r.right, r.bottom);
+            }
+
+            // Fallback (通常不会走到这里，除非句柄无效)
             bool isPrimary = (hTaskbar == FindWindow("Shell_TrayWnd", null));
 
             if (isPrimary)
@@ -160,15 +168,9 @@ namespace LiteMonitor.src.UI.Helpers
             }
             else
             {
-                if (hTaskbar != IntPtr.Zero && GetWindowRect(hTaskbar, out RECT r))
-                {
-                    return Rectangle.FromLTRB(r.left, r.top, r.right, r.bottom);
-                }
-                else
-                {
-                    Screen target = Screen.AllScreens.FirstOrDefault(s => s.DeviceName == targetDevice) ?? Screen.PrimaryScreen;
-                    return new Rectangle(target.Bounds.Left, target.Bounds.Bottom - 40, target.Bounds.Width, 40);
-                }
+                // 副屏兜底
+                Screen target = Screen.AllScreens.FirstOrDefault(s => s.DeviceName == targetDevice) ?? Screen.PrimaryScreen;
+                return new Rectangle(target.Bounds.Left, target.Bounds.Bottom - 40, target.Bounds.Width, 40);
             }
             return Rectangle.Empty;
         }
