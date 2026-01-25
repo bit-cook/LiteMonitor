@@ -11,6 +11,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using LiteMonitor;
 using LiteMonitor.src.SystemServices.InfoService;
+using LiteMonitor.src.Plugins.Native;
 
 namespace LiteMonitor.src.Plugins
 {
@@ -253,41 +254,49 @@ namespace LiteMonitor.src.Plugins
 
                 if (!hit)
                 {
-                    string proxy = step.Proxy;
-                    if (!string.IsNullOrEmpty(proxy) && proxy.Contains("{{"))
+                    // [Feature] Support Native Native Handlers (Weather, Crypto)
+                    if (url.StartsWith("native://"))
                     {
-                         proxy = PluginProcessor.ResolveTemplate(proxy, context);
+                        resultRaw = await ExecuteNativeAsync(url, context);
                     }
-
-                    // Request Coalescing
-                    var task = _inflightRequests.GetOrAdd(cacheKey, _ => FetchRawAsync(step.Method, url, body, step.Headers, step.ResponseEncoding, CancellationToken.None, proxy));
-                    
-                    try 
+                    else
                     {
-                        // Wait with cancellation support
-                        var tcs = new TaskCompletionSource<string>();
-                        using (token.Register(() => tcs.TrySetCanceled()))
+                        string proxy = step.Proxy;
+                        if (!string.IsNullOrEmpty(proxy) && proxy.Contains("{{"))
                         {
-                            var sw = System.Diagnostics.Stopwatch.StartNew();
-                            var finishedTask = await Task.WhenAny(task, tcs.Task);
-                            if (finishedTask == tcs.Task) throw new OperationCanceledException(token);
-                            resultRaw = await task;
-                            sw.Stop();
-                            context["__latency__"] = sw.ElapsedMilliseconds.ToString();
+                             proxy = PluginProcessor.ResolveTemplate(proxy, context);
                         }
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        throw;
-                    }
-                    catch (Exception)
-                    {
-                        _inflightRequests.TryRemove(cacheKey, out _);
-                        throw;
-                    }
-                    finally
-                    {
-                         _inflightRequests.TryRemove(cacheKey, out _);
+
+                        // Request Coalescing
+                        var task = _inflightRequests.GetOrAdd(cacheKey, _ => FetchRawAsync(step.Method, url, body, step.Headers, step.ResponseEncoding, CancellationToken.None, proxy));
+                        
+                        try 
+                        {
+                            // Wait with cancellation support
+                            var tcs = new TaskCompletionSource<string>();
+                            using (token.Register(() => tcs.TrySetCanceled()))
+                            {
+                                var sw = System.Diagnostics.Stopwatch.StartNew();
+                                var finishedTask = await Task.WhenAny(task, tcs.Task);
+                                if (finishedTask == tcs.Task) throw new OperationCanceledException(token);
+                                resultRaw = await task;
+                                sw.Stop();
+                                context["__latency__"] = sw.ElapsedMilliseconds.ToString();
+                            }
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            throw;
+                        }
+                        catch (Exception)
+                        {
+                            _inflightRequests.TryRemove(cacheKey, out _);
+                            throw;
+                        }
+                        finally
+                        {
+                             _inflightRequests.TryRemove(cacheKey, out _);
+                        }
                     }
                 }
 
@@ -365,6 +374,43 @@ namespace LiteMonitor.src.Plugins
                 client.DefaultRequestHeaders.Add("User-Agent", "LiteMonitor/1.0");
                 return client;
             });
+        }
+
+        private async Task<string> ExecuteNativeAsync(string url, Dictionary<string, string> context)
+        {
+            // url: native://citycode?province=...
+            var uri = new Uri(url);
+            
+            // Simple Query Parse
+            var args = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            if (!string.IsNullOrEmpty(uri.Query))
+            {
+                var q = uri.Query.TrimStart('?');
+                foreach (var part in q.Split('&', StringSplitOptions.RemoveEmptyEntries))
+                {
+                    var kv = part.Split('=');
+                    if (kv.Length == 2) 
+                    {
+                        args[kv[0]] = System.Net.WebUtility.UrlDecode(kv[1]);
+                    }
+                }
+            }
+
+            if (uri.Host.Equals("citycode", StringComparison.OrdinalIgnoreCase))
+            {
+                string p = args.ContainsKey("province") ? args["province"] : "";
+                string c = args.ContainsKey("city") ? args["city"] : "";
+                string d = args.ContainsKey("district") ? args["district"] : "";
+                return await CityCodeResolver.ResolveAsync(p, c, d);
+            }
+            else if (uri.Host.Equals("crypto", StringComparison.OrdinalIgnoreCase))
+            {
+                string s = args.ContainsKey("symbol") ? args["symbol"] : "BTC";
+                string fb = args.ContainsKey("fallback") ? args["fallback"] : "";
+                return await CryptoNative.FetchAsync(s, fb);
+            }
+            
+            throw new Exception($"Unknown native host: {uri.Host}");
         }
 
         private async Task<string> FetchRawAsync(string methodStr, string url, string body, Dictionary<string, string> headers, string encoding, System.Threading.CancellationToken token, string proxy = null)

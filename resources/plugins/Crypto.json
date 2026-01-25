@@ -36,7 +36,7 @@
     "steps": [
       {
         "id": "fetch_data",
-        "url": "https://crypto.litemonitor.cn/?symbol={{symbol}}",
+        "url": "native://crypto?symbol={{symbol}}&fallback=https://crypto.litemonitor.cn/?symbol={{symbol}}",
         "method": "GET",
         "response_format": "json",
         "extract": {

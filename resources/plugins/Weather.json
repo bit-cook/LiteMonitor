@@ -4,7 +4,7 @@
     "name": "实时天气监控",
     "version": "1.0",
     "author": "LiteMonitor",
-    "description": "实时天气插件，基于IP自动定位，获取高精度天气数据，支持多种显示方式"
+    "description": "实时天气插件（国内），基于IP自动定位，获取高精度天气数据，支持多种显示方式"
   },
   "inputs": [
     {
@@ -72,7 +72,7 @@
       },
       {
         "id": "step2_code",
-        "url": "https://citycode.litemonitor.cn/?district={{district_raw}}&city={{city}}&province={{province_raw}}",
+        "url": "native://citycode?district={{district_raw}}&city={{city}}&province={{province_raw}}",
         "response_format": "json",
         "cache_minutes": 43200,
         "extract": {
