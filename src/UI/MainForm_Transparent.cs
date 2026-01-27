@@ -37,6 +37,7 @@ namespace LiteMonitor
                 if (_cfg != null && _cfg.ClickThrough)
                 {
                     cp.ExStyle |= 0x20; // WS_EX_TRANSPARENT
+                    cp.ExStyle |= 0x80000; // WS_EX_LAYERED (必须配合才能实现完整穿透)
                 }
 
                 return cp;
@@ -296,14 +297,19 @@ namespace LiteMonitor
                 }
             }
 
-            // 强制置顶刷新
+            // [Fix] 强制置顶刷新，增加重试机制确保在某些系统环境下依然生效
             if (_cfg.TopMost)
             {
-                this.BeginInvoke(new Action(() =>
+                this.BeginInvoke(new Action(async () =>
                 {
+                    // 1. 立即执行第一次置顶
                     this.TopMost = false;
                     this.TopMost = true;
                     this.BringToFront();
+                    
+                    // 2. 延迟 500ms 后进行二次校验，防止被其他启动项抢夺置顶
+                    await Task.Delay(500);
+                    if (this.Visible && !this.TopMost) this.TopMost = true;
                 }));
             }
         }

@@ -32,6 +32,11 @@ namespace LiteMonitor.src.SystemServices
         // 缓存住找到的 ISensor 对象，彻底消除每秒的字符串解析和遍历开销
         private readonly Dictionary<string, (ISensor Sensor, string ConfigSource)> _manualSensorCache = new();
 
+        // ★★★ [优化] 核心指标传感器列表缓存，消除每秒的字符串查找和过滤开销 ★★★
+        private List<ISensor>? _cpuLoadSensorsCache = null;
+        private List<ISensor>? _cpuTempSensorsCache = null;
+        private long _lastPowerCheckTick = 0;
+
         public HardwareValueProvider(Computer c, Settings s, SensorMap map, NetworkManager net, DiskManager disk, FpsCounter fpsCounter,PerformanceCounterManager perfManager, object syncLock, Dictionary<string, float> lastValid)
         {
             _computer = c;
@@ -52,6 +57,8 @@ namespace LiteMonitor.src.SystemServices
             {
                 _manualSensorCache.Clear();
                 _tickCache.Clear();
+                _cpuLoadSensorsCache = null;
+                _cpuTempSensorsCache = null;
             }
         }
 
@@ -62,20 +69,22 @@ namespace LiteMonitor.src.SystemServices
             {
                 _tickCache.Clear();
 
-                // [新增] 集中获取系统电源状态，每轮只调用一次，性能消耗可忽略不计
-                try
+                // [优化] 节流获取电源状态：每 3 秒检查一次即可，减少 P/Invoke 频率
+                long now = Environment.TickCount64;
+                if (now - _lastPowerCheckTick > 3000)
                 {
-                    var status = System.Windows.Forms.SystemInformation.PowerStatus;
-                    MetricUtils.IsBatteryCharging = (status.PowerLineStatus == System.Windows.Forms.PowerLineStatus.Online);
-                }
-                catch
-                {
-                    // 兜底：如果 API 失败，保持原值
+                    _lastPowerCheckTick = now;
+                    try
+                    {
+                        var status = System.Windows.Forms.SystemInformation.PowerStatus;
+                        MetricUtils.IsBatteryCharging = (status.PowerLineStatus == System.Windows.Forms.PowerLineStatus.Online);
+                    }
+                    catch
+                    {
+                        // 兜底：如果 API 失败，保持原值
+                    }
                 }
             }
-
-            // [删除] 旧的 UpdateSystemCpuCounter 逻辑全部移除
-            // Manager 现在会自动处理 NextValue
         }
 
 
@@ -114,21 +123,33 @@ namespace LiteMonitor.src.SystemServices
                         // B. 熔断/回退逻辑 (LHM 手动聚合)
                         if (result == null)
                         {
-                            // 手动聚合
-                            var cpu = _computer.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.Cpu);
-                            if (cpu != null)
+                            // ★★★ [优化] 使用缓存的传感器列表，避免每秒的字符串查找 ★★★
+                            if (_cpuLoadSensorsCache == null)
+                            {
+                                var cpu = _computer.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.Cpu);
+                                if (cpu != null)
+                                {
+                                    _cpuLoadSensorsCache = new List<ISensor>();
+                                    foreach (var s in cpu.Sensors)
+                                    {
+                                        if (s.SensorType != SensorType.Load) continue;
+                                        if (SensorMap.Has(s.Name, "Core") && SensorMap.Has(s.Name, "#") && 
+                                            !SensorMap.Has(s.Name, "Total") && !SensorMap.Has(s.Name, "SOC") && 
+                                            !SensorMap.Has(s.Name, "Max") && !SensorMap.Has(s.Name, "Average"))
+                                        {
+                                            _cpuLoadSensorsCache.Add(s);
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (_cpuLoadSensorsCache != null && _cpuLoadSensorsCache.Count > 0)
                             {
                                 double totalLoad = 0;
                                 int coreCount = 0;
-                                foreach (var s in cpu.Sensors)
+                                foreach (var s in _cpuLoadSensorsCache)
                                 {
-                                    if (s.SensorType != SensorType.Load) continue;
-                                    if (SensorMap.Has(s.Name, "Core") && SensorMap.Has(s.Name, "#") && 
-                                        !SensorMap.Has(s.Name, "Total") && !SensorMap.Has(s.Name, "SOC") && 
-                                        !SensorMap.Has(s.Name, "Max") && !SensorMap.Has(s.Name, "Average"))
-                                    {
-                                        if (s.Value.HasValue) { totalLoad += s.Value.Value; coreCount++; }
-                                    }
+                                    if (s.Value.HasValue) { totalLoad += s.Value.Value; coreCount++; }
                                 }
                                 if (coreCount > 0) result = (float)(totalLoad / coreCount);
                             }
@@ -145,20 +166,35 @@ namespace LiteMonitor.src.SystemServices
 
                     // 2. CPU.Temp
                     case "CPU.Temp":
-                        float maxTemp = -1000f;
-                        bool found = false;
-                        var cpuT = _computer.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.Cpu);
-                        if (cpuT != null)
+                        // ★★★ [优化] 使用缓存的传感器列表 ★★★
+                        if (_cpuTempSensorsCache == null)
                         {
-                            foreach (var s in cpuT.Sensors)
+                            var cpuT = _computer.Hardware.FirstOrDefault(h => h.HardwareType == HardwareType.Cpu);
+                            if (cpuT != null)
                             {
-                                if (s.SensorType != SensorType.Temperature) continue;
-                                if (!s.Value.HasValue || s.Value.Value <= 0) continue;
-                                if (SensorMap.Has(s.Name, "Distance") || SensorMap.Has(s.Name, "Average") || SensorMap.Has(s.Name, "Max")) continue;
-                                if (s.Value.Value > maxTemp) { maxTemp = s.Value.Value; found = true; }
+                                _cpuTempSensorsCache = new List<ISensor>();
+                                foreach (var s in cpuT.Sensors)
+                                {
+                                    if (s.SensorType != SensorType.Temperature) continue;
+                                    if (SensorMap.Has(s.Name, "Distance") || SensorMap.Has(s.Name, "Average") || SensorMap.Has(s.Name, "Max")) continue;
+                                    _cpuTempSensorsCache.Add(s);
+                                }
                             }
                         }
-                        if (found) result = maxTemp;
+
+                        if (_cpuTempSensorsCache != null && _cpuTempSensorsCache.Count > 0)
+                        {
+                            float maxTemp = -1000f;
+                            bool found = false;
+                            foreach (var s in _cpuTempSensorsCache)
+                            {
+                                if (s.Value.HasValue && s.Value.Value > 0)
+                                {
+                                    if (s.Value.Value > maxTemp) { maxTemp = s.Value.Value; found = true; }
+                                }
+                            }
+                            if (found) result = maxTemp;
+                        }
                         
                         if (result == null)
                         {

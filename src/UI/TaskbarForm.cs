@@ -23,6 +23,7 @@ namespace LiteMonitor
         private List<Column>? _cols;
         private ContextMenuStrip? _currentMenu;
         private DateTime _lastFindHandleTime = DateTime.MinValue;
+        private string _lastLayoutSignature = "";
 
         // 公开属性
         public string TargetDevice { get; private set; } = "";
@@ -68,6 +69,7 @@ namespace LiteMonitor
         public void ReloadLayout()
         {
             _layout = new HorizontalLayout(ThemeManager.Current, 300, LayoutMode.Taskbar, _cfg);
+            _lastLayoutSignature = ""; // 重置签名，强制重算
             _winHelper.ApplyLayeredStyle(_bizHelper.TransparentKey, _cfg.TaskbarClickThrough);
             _bizHelper.CheckTheme(true);
 
@@ -153,15 +155,23 @@ namespace LiteMonitor
             
             _bizHelper.UpdateTaskbarRect(); 
             
+            // [优化] 增加布局签名检查，只有当水平模式下位宽发生变化，或任务栏高度改变时才重算布局
             if (_bizHelper.IsVertical())
             {
+                // 垂直模式逻辑简单且无测量开销，直接重算即可
                 _bizHelper.BuildVerticalLayout(_cols);
+                _lastLayoutSignature = "vertical";
             }
             else
             {
-                _layout.Build(_cols, _bizHelper.Height);
-                Width = _layout.PanelWidth;
-                Height = _bizHelper.Height;
+                string currentSig = _layout.GetLayoutSignature(_cols) + "_" + _bizHelper.Height;
+                if (currentSig != _lastLayoutSignature)
+                {
+                    _layout.Build(_cols, _bizHelper.Height);
+                    Width = _layout.PanelWidth;
+                    Height = _bizHelper.Height;
+                    _lastLayoutSignature = currentSig;
+                }
             }
             
             _bizHelper.UpdatePlacement(Width);

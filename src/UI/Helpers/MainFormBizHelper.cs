@@ -314,6 +314,11 @@ namespace LiteMonitor.src.UI.Helpers
                 if (HardwareMonitor.Instance != null) await HardwareMonitor.Instance.SmartCheckDriver();
                 await UpdateChecker.CheckAsync();
                 CheckUpdateSuccess();
+
+                // [Fix] 再次确认窗口属性（置顶、穿透），作为启动后的二次校验，确保功能与 UI 勾选一致
+                _form.BeginInvoke(new Action(() => {
+                    Core.Actions.AppActions.ApplyWindowAttributes(_cfg, (MainForm)_form);
+                }));
             }
             catch { }
         }

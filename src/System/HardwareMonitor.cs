@@ -215,7 +215,11 @@ namespace LiteMonitor.src.SystemServices
                         // 递归更新主板 (Motherboard / SuperIO)
                         if ((hw.HardwareType == HardwareType.Motherboard || hw.HardwareType == HardwareType.SuperIO|| hw.HardwareType == HardwareType.Cooler) && needMobo)
                         {
-                             UpdateWithSubHardware(hw);
+                             // ★★★ [优化] 降低更新频率：主板传感器每 3 秒更新一次，减少 I/O 阻塞 ★★★
+                             if (isSlowScanTick || forceAll)
+                             {
+                                 UpdateWithSubHardware(hw);
+                             }
                              continue;
                         }
                     }

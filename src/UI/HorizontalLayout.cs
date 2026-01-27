@@ -286,35 +286,28 @@ namespace LiteMonitor
             });
         }
 
-        private string GetMaxValueSample(Column col, bool isTop)
-        {
-            var item = isTop ? col.Top : col.Bottom;
-            if (item == null) return "";
-
-            // [Fix] 统一使用 GenerateSampleText 生成样本 (包含单位和数字转0)
-            return GenerateSampleText(item);
-        }
-
         // [通用方案] 获取当前布局的签名是否变化 (用于检测是否需要重绘)
-        // 拼接所有列的 MaxValueSample，如果签名变了，说明列宽可能需要调整
-        public string GetLayoutIsChage(List<Column> cols)
+        public string GetLayoutSignature(List<Column> cols)
         {
             if (cols == null || cols.Count == 0) return "";
             
-            // 简单哈希或拼接。为了性能，这里只取前几列或关键特征，或者简单地拼接长度
-            // 鉴于列数不多，StringBuilder 拼接所有 Sample 长度即可
-            // 或者直接用 unchecked 加法算一个 HashCode
             unchecked
             {
                 int hash = 17;
                 foreach (var col in cols)
                 {
-                    string sTop = GetMaxValueSample(col, true);
-                    string sBot = GetMaxValueSample(col, false);
-                    hash = hash * 31 + sTop.Length; // 关注长度变化即可 (因为主要是宽度撑开)
-                    hash = hash * 31 + sTop.GetHashCode(); // 加上内容哈希更保险
-                    hash = hash * 31 + sBot.Length;
-                    hash = hash * 31 + sBot.GetHashCode();
+                    // 直接计算 Top 和 Bottom 的特征哈希，不再生成中间样本字符串
+                    void AddItemToHash(MetricItem? item)
+                    {
+                        if (item == null) return;
+                        string text = item.TextValue ?? item.GetFormattedText(true);
+                        hash = hash * 31 + text.Length;
+                        // 关键：数字位宽一致，所以只对非数字字符（单位、小数点）做哈希
+                        foreach (char c in text) if (!char.IsDigit(c)) hash = (hash << 5) - hash + c;
+                    }
+
+                    AddItemToHash(col.Top);
+                    AddItemToHash(col.Bottom);
                 }
                 return hash.ToString();
             }

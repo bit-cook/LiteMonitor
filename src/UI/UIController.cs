@@ -225,7 +225,7 @@ namespace LiteMonitor
                 // 只有当充电状态等导致样本变化时，才标记 Dirty
                 if (_cfg.HorizontalMode && _hxLayout != null)
                 {
-                    string currentLayoutSig = _hxLayout.GetLayoutIsChage(_hxColsHorizontal);
+                    string currentLayoutSig = _hxLayout.GetLayoutSignature(_hxColsHorizontal);
                     if (currentLayoutSig != _lastLayoutSignature)
                     {
                         _lastLayoutSignature = currentLayoutSig;
