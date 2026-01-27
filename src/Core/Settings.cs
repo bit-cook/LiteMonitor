@@ -52,14 +52,28 @@ namespace LiteMonitor
         // 开启后，将忽略预设的"粗体/细体"逻辑，强制使用以下参数
         public bool TaskbarCustomLayout { get; set; } = false; 
 
-        public string TaskbarFontFamily { get; set; } = "Microsoft YaHei UI";
-        public float TaskbarFontSize { get; set; } = 10f;
+        public string TaskbarFontFamily { get; set; } = DEFAULT_TB_FONT;
+        public float TaskbarFontSize { get; set; } = DEFAULT_TB_SIZE_BOLD;
         public bool TaskbarFontBold { get; set; } = true;
         
         // 间距配置 (单位: px, 会自动随 DPI 缩放)
-        public int TaskbarItemSpacing { get; set; } = 6;      // 组与组之间的间距
-        public int TaskbarInnerSpacing { get; set; } = 8;     // 标签与数值之间的间距
-        public int TaskbarVerticalPadding { get; set; } = 3;  // 垂直方向的微调/行间距
+        public int TaskbarItemSpacing { get; set; } = DEFAULT_TB_GAP;      // 组与组之间的间距
+        public int TaskbarInnerSpacing { get; set; } = DEFAULT_TB_INNER_BOLD;     // 标签与数值之间的间距
+        public int TaskbarVerticalPadding { get; set; } = DEFAULT_TB_VOFF;  // 垂直方向的微调/行间距
+        
+        // ★★★ [新增] 横条/桌面模式 间距配置 ★★★
+        public int HorizontalItemSpacing { get; set; } = 12;  // 组间距 (默认 12)
+        public int HorizontalInnerSpacing { get; set; } = 8;  // 标签与值间距 (默认 8)
+
+        // ★★★ 常量定义：用于 GetStyle 中的默认策略 ★★★
+        public const string DEFAULT_TB_FONT = "Microsoft YaHei UI"; // 任务栏默认字体（兼容多语言环境，系统自带）
+        public const float DEFAULT_TB_SIZE_BOLD = 10f; // 粗字模式默认字号（提升可读性）
+        public const float DEFAULT_TB_SIZE_REGULAR = 9f; // 细字模式默认字号（节省空间，更精致）
+        public const int DEFAULT_TB_GAP = 6; // 任务栏组间距默认值（不同监控项之间的距离）
+        public const int DEFAULT_TB_INNER_BOLD = 8; // 粗字模式标签与值间距默认值（更宽的间距适配粗体）
+        public const int DEFAULT_TB_INNER_REGULAR = 6; // 细字模式标签与值间距默认值（紧凑布局）
+        public const int DEFAULT_TB_VOFF = 2; // 任务栏垂直内边距默认值（用于垂直居中微调）
+
         
         // ★★★ 新增：指定任务栏显示的屏幕设备名 ("" = 自动/主屏) ★★★
         public string TaskbarMonitorDevice { get; set; } = "";

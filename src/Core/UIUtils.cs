@@ -195,22 +195,22 @@ namespace LiteMonitor.src.Core
                 g.FillPath(GetBrush(t.Color.BarBackground), bgPath);
             }
 
-            // Percent
+            // 2. Value Bar
+            // [Refactor] CachedPercent already includes visual correction (min 5%, max 100%) via MetricUtils.GetProgressValue
             double percent = item.CachedPercent; 
-            percent = Math.Max(0.05, Math.Min(1.0, percent));
-
+            
             int w = (int)(item.BarRect.Width * percent);
-            if (w < 2) w = 2;
+            if (w < 1 && percent > 0) w = 1; // 绝对防御：只要有百分比，至少画1像素
 
             // Color
             Color barColor = GetStateColor(item.CachedColorState, t, false);
 
             if (w > 0)
             {
-                var filled = new Rectangle(item.BarRect.X, item.BarRect.Y, w, item.BarRect.Height);
-                if (filled.Width > 0 && filled.Height > 0)
+                Rectangle bar = new Rectangle(item.BarRect.X, item.BarRect.Y, w, item.BarRect.Height);
+                if (bar.Width > 0 && bar.Height > 0)
                 {
-                    using (var fgPath = RoundRect(filled, filled.Height / 2))
+                    using (var fgPath = RoundRect(bar, bar.Height / 2))
                     using (var brush = new SolidBrush(barColor))
                     {
                         g.FillPath(brush, fgPath);

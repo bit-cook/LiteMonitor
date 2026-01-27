@@ -27,6 +27,11 @@ namespace LiteMonitor
         private HorizontalLayout? _hxLayout;
         private Dictionary<string, DateTime> _overheatStartTimes = new Dictionary<string, DateTime>();
         public MainForm MainForm => (MainForm)_form;
+        
+        // 辅助判断当前渲染状态是否为横屏 (用于 AppActions 判断是否切换了模式)
+        // 只有在 Render 并在横屏分支运行后 _hxLayout 才不为 null
+        // 竖屏模式下 ApplyTheme 会将其重置为 null
+        public bool IsLayoutHorizontal => _hxLayout != null;
 
         public List<Column> GetTaskbarColumns() => _hxColsTaskbar;
 

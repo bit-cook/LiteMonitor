@@ -191,18 +191,39 @@ namespace LiteMonitor.src.SystemServices
                 // 3. 兜底策略：找有效值中最大的 (假设热点即关键点，且排除 0 和 200+ 异常值)
                 if (best == null)
                 {
-                    float maxVal = -999f;
+                    // ★★★ 优化策略：优先寻找"合理范围"(15-68度)内的最大值，这通常是 System/Motherboard 温度 ★★★
+                    // 只有当找不到合理值时，才去寻找更宽范围(0-95度)的最大值(可能是 VRM 或 Chipset)
+                    // 修复：用户反馈 Asus Z790 主板 Temperature #5 经常跳到 100+，导致误报。
+                    
+                    ISensor? bestSafe = null;
+                    float maxSafe = -999f;
+                    
+                    ISensor? bestFallback = null;
+                    float maxFallback = -999f;
+
                     foreach (var t in candidatesMoboTemps)
                     {
                         if (!t.Value.HasValue) continue;
                         float v = t.Value.Value;
-                        // 过滤掉 0 和 >110 的异常读数
-                        if (v > 0 && v < 110 && v > maxVal) 
-                        { 
-                            maxVal = v; 
-                            best = t; 
+                        
+                        // 1. 收集宽范围 (0 - 95)，严格过滤掉 >95 的异常值/虚假值 (原逻辑是 110，太宽了)
+                        if (v > 0 && v < 95 && v > maxFallback)
+                        {
+                            maxFallback = v;
+                            bestFallback = t;
+                        }
+                        
+                        // 2. 收集合理范围 (15 - 68)
+                        // 68度通常是主板/系统温度的合理上限，超过这个值可能是 Chipset 或 VRM
+                        if (v >= 15 && v <= 68 && v > maxSafe)
+                        {
+                            maxSafe = v;
+                            bestSafe = t;
                         }
                     }
+                    
+                    // 优先使用合理范围的传感器
+                    best = bestSafe ?? bestFallback;
                 }
                 
                 if (best != null) newMap["MOBO.Temp"] = best;

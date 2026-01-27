@@ -110,8 +110,8 @@ namespace LiteMonitor.src.UI.Controls
             // ★★★ 5. [新增] Unit Input 初始化逻辑 ★★★
             // 1. 根据传入的模式，获取正确的默认单位 (如 Panel="{u}/s", Taskbar="{u}")
             // 使用 Settings 上下文，确保用户能看到 {u} 占位符
-            var unitCtx = isTaskbarMode ? MetricUtils.UnitContext.Taskbar : MetricUtils.UnitContext.Settings;
-            string defUnit = MetricUtils.GetDefaultUnit(item.Key, unitCtx);
+            var unitCtx = isTaskbarMode ? MetricUtils.UnitContext.SettingsTaskbar : MetricUtils.UnitContext.SettingsPanel;
+            string defUnit = MetricUtils.GetUnitStr(item.Key, 0, unitCtx);
             
             // 2. 获取当前配置值
             string userConfig = isTaskbarMode ? item.UnitTaskbar : item.UnitPanel;
@@ -186,8 +186,8 @@ namespace LiteMonitor.src.UI.Controls
             // 重新获取默认值和配置
             // 使用 Settings 上下文，确保切换模式时，Placeholder 依然正确显示带 {u} 的格式
             // [Fix] 根据模式动态选择上下文
-            var unitCtx = isTaskbarMode ? MetricUtils.UnitContext.Taskbar : MetricUtils.UnitContext.Settings;
-            string defUnit = MetricUtils.GetDefaultUnit(Config.Key, unitCtx);
+            var unitCtx = isTaskbarMode ? MetricUtils.UnitContext.SettingsTaskbar : MetricUtils.UnitContext.SettingsPanel;
+            string defUnit = MetricUtils.GetUnitStr(Config.Key, 0, unitCtx);
             string userConfig = isTaskbarMode ? Config.UnitTaskbar : Config.UnitPanel;
 
             // 更新 Input 状态
@@ -299,8 +299,8 @@ namespace LiteMonitor.src.UI.Controls
             
             // 获取当前模式下的默认单位，用于对比
             // 保存时同样需要对比 Settings 上下文下的默认值 (因为输入框显示的是 Settings 格式)
-            var unitCtx = _isTaskbarMode ? MetricUtils.UnitContext.Taskbar : MetricUtils.UnitContext.Settings;
-            string defUnit = MetricUtils.GetDefaultUnit(Config.Key, unitCtx);
+            var unitCtx = _isTaskbarMode ? MetricUtils.UnitContext.SettingsTaskbar : MetricUtils.UnitContext.SettingsPanel;
+            string defUnit = MetricUtils.GetUnitStr(Config.Key, 0, unitCtx);
             string finalVal;
 
             if (string.IsNullOrEmpty(rawUnit)) 

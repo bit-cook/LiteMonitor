@@ -70,12 +70,16 @@ namespace LiteMonitor.src.Core
         // =========================================================
         // 3. 格式化逻辑 (原 Formatter)
         // =========================================================
-        public static (string valStr, string unitStr) FormatValueParts(string key, float? raw)
+
+        /// <summary>
+        /// 获取纯数值字符串 (已处理缩放、舍入、紧凑模式)
+        /// </summary>
+        public static string GetValueStr(string key, float? value, bool compact = false)
         {
-            float v = raw ?? 0.0f;
+            float v = value ?? 0.0f;
             var type = GetType(key);
 
-            // 内存特殊处理
+            // 1. 内存特殊处理 (容量 vs 百分比)
             if (type == MetricType.Memory)
             {
                  var cfg = Settings.Load();
@@ -86,93 +90,109 @@ namespace LiteMonitor.src.Core
                         : Settings.DetectedGpuVramTotalGB;
 
                      if (totalGB > 0)
-                         return FormatDataSizeParts((v / 100.0) * totalGB * 1073741824.0, 1);
+                     {
+                         // 转换为字节 -> 格式化 -> 取数值部分
+                         return FormatDataSizeParts((v / 100.0) * totalGB * 1073741824.0, 1).val;
+                     }
                  }
-                 return ($"{v:0.0}", "%");
+                 // 百分比模式
+                 return $"{v:0.0}";
             }
 
+            // 2. 数据量/速度 (自动单位缩放)
             if (type == MetricType.DataSpeed || type == MetricType.DataSize)
-                return FormatDataSizeParts(v, 1);
-
-            // 使用 GetDefaultUnit 统一获取单位 
-            // 注意：FormatValueParts 主要用于 Panel 绘制，所以这里使用 Panel 上下文
-            // 之前的硬编码：FPS=" FPS", RPM=" RPM", Temp="°C" (无空格)
-            // 现在的 GetDefaultUnit(Panel)：FPS=" FPS", RPM=" RPM", Temp=" °C" (有空格)
-            
-            string suffix = (key.StartsWith("BAT", StringComparison.OrdinalIgnoreCase) && IsBatteryCharging) ? "⚡" : "";
-
-            // 既然已经有统一的 GetDefaultUnit，我们应该尽量复用它。
-            // 但需要注意 FormatValueParts 的返回值被用于 DrawString，
-            // 如果这里的单位字符串改变了（例如 Temp 多了个空格），可能会微调 UI 显示。
-            // 鉴于用户要求“统一封装解决”，我们将尝试复用。
-            
-            string unit = GetDefaultUnit(key, UnitContext.Panel);
-
-            // 修正：Temp 在 Panel 模式下 GetDefaultUnit 返回 " °C"，但原 FormatValueParts 返回 "°C"。
-            // 为了保持视觉一致性，或者我们认为 " °C" 才是新的标准？
-            // 考虑到 HorizontalLayout 中已经统一使用了 " °C"，这里也应该统一。
-            // 唯一的例外是 Power/Volt/Current 等，原代码是直接拼接，GetDefaultUnit 返回的也是无空格的。
-
-            return type switch
             {
-                MetricType.Frequency   => ($"{v/1000f:F1}", unit),
-                MetricType.FPS         => ($"{v:0}", unit),
-                MetricType.RPM         => ($"{v:0}", unit),
-                // Temp 特殊处理：如果 GetDefaultUnit 返回带空格，这里也带空格，统一 UI。
-                MetricType.Temperature => ($"{v:0.0}", unit), // 暂时保持原样 "°C"，避免面板数字和单位间距过大
-                MetricType.Percent     => ($"{v:0.0}", unit + suffix),
-                MetricType.Voltage     => ($"{v:F2}", unit + suffix),
-                MetricType.Current     => ($"{v:F2}", unit + suffix),
-                MetricType.Power       => (key.StartsWith("BAT") ? $"{v:F1}" : $"{v:F1}", unit + suffix),
-                _                      => ($"{v:0.0}", "")
-            };
+                return FormatDataSizeParts(v, compact ? -1 : 1).val;
+            }
+
+            // 4. 标准模式 (Panel)
+            if (type == MetricType.FPS || type == MetricType.RPM) return $"{v:0}";
+            if (type == MetricType.Frequency) return $"{v/1000f:F1}"; // 频率特殊：基准是 MHz，显示是 GHz，这里已经除以1000了
+            
+            // 内存百分比、负载等
+
+            float absV = Math.Abs(v);// 处理电池功耗负数时，取绝对值
+            if (absV < 10) return $"{v:0.00}";
+            if (absV < 100) return $"{v:0.0}";
+            return $"{v:0}";
         }
 
         public enum UnitContext
         {
-            Panel,      // 主界面
-            Taskbar,    // 任务栏
-            Settings    // 设置界面 (显示默认值用)
+            Panel,          // 主界面 (完整, 带空格)
+            Taskbar,        // 任务栏 (紧凑, 无空格)
+            SettingsPanel,  // 设置界面 - 主界面预览 (带占位符)
+            SettingsTaskbar // 设置界面 - 任务栏预览 (带占位符)
         }
 
-        public static string GetDefaultUnit(string key, UnitContext context)
+        /// <summary>
+        /// 获取单位字符串 (处理上下文、动态单位)
+        /// </summary>
+        public static string GetUnitStr(string key, float? value, UnitContext context)
         {
             var type = GetType(key);
+            
+            // 1. 内存 (GB vs %)
+            if (type == MetricType.Memory) 
+                return Settings.Load().MemoryDisplayMode == 1 ? "GB" : "%";
 
-            // 1. 设置界面需要看到 {u} 占位符，明确告知用户这是数据类单位
-            if (context == UnitContext.Settings)
+            // 2. 数据 (动态单位)
+            if (type == MetricType.DataSpeed || type == MetricType.DataSize)
             {
-                if (type == MetricType.Memory) return Settings.Load().MemoryDisplayMode == 1 ? "GB" : "%"; // 内存设置界面直接显示 GB/%，不显示 {u}，因为这个由全局设置控制
-                if (type == MetricType.DataSize) return "{u}";
-                if (type == MetricType.DataSpeed) return "{u}/s";
+                // Settings 模式下，返回 {u} 占位符，提示用户这是动态单位
+                // 仅 SettingsPanel 和 SettingsTaskbar 返回占位符
+                if (context == UnitContext.SettingsPanel || context == UnitContext.SettingsTaskbar)
+                    return type == MetricType.DataSpeed ? "{u}/s" : "{u}";
+
+                // 需要根据数值重新计算单位 (FormatDataSizeParts 开销很小)
+                // UnitContext.Taskbar 对应紧凑模式 -> 整数 (0)
+                // UnitContext.Panel 对应主界面 -> 自适应 (-1)
+                int decimals = (context == UnitContext.Taskbar) ? 0 : -1;
+                string u = FormatDataSizeParts(value ?? 0, decimals).unit;
+                
+                if (type == MetricType.DataSpeed)
+                    return context == UnitContext.Taskbar ? u : u + "/s";
+                
+                return u;
             }
 
-            // 2. 实际显示逻辑 (Panel / Taskbar)
-            // 内存特殊处理
-            if (type == MetricType.Memory) return Settings.Load().MemoryDisplayMode == 1 ? "GB" : "%";
-            
-            // 数据类：Panel 显示完整单位，Taskbar 简写
-            if (type == MetricType.DataSize) return "{u}"; // 实际上会被 FormatValueParts 替换为 KB/MB/GB
-            if (type == MetricType.DataSpeed) return context == UnitContext.Taskbar ? "{u}" : "{u}/s";
+            // 3. 电池充电后缀
+            string suffix = (
+                key.StartsWith("BAT", StringComparison.OrdinalIgnoreCase) 
+                && IsBatteryCharging 
+                && context != UnitContext.SettingsPanel 
+                && context != UnitContext.SettingsTaskbar) ? "⚡" : "";
 
+            // 4. 标准单位表
             return type switch
             {
-                MetricType.Percent     => "%",
+                MetricType.Percent     => "%" + suffix,
                 MetricType.Temperature => "°C",
                 MetricType.Frequency   => "GHz",
-                MetricType.Power       => "W",
-                MetricType.Voltage     => "V",
-                MetricType.Current     => "A",
-                MetricType.FPS         => context == UnitContext.Taskbar ? "F" : " FPS",
-                MetricType.RPM         => context == UnitContext.Taskbar ? "R" : " RPM",
+                MetricType.Power       => "W" + suffix,
+                MetricType.Voltage     => "V" + suffix,
+                MetricType.Current     => "A" + suffix,
+                // Taskbar 和 SettingsTaskbar 使用简写
+                MetricType.FPS         => (context == UnitContext.Taskbar || context == UnitContext.SettingsTaskbar) ? "F" : " FPS",
+                MetricType.RPM         => (context == UnitContext.Taskbar || context == UnitContext.SettingsTaskbar) ? "R" : " RPM",
                 _ => ""
             };
         }
 
-        // 兼容旧重载 (逐步废弃)
-        public static string GetDefaultUnit(string key, bool isTaskbarMode)
+        public static string GetSampleValueStr(string key)
         {
-            return GetDefaultUnit(key, isTaskbarMode ? UnitContext.Taskbar : UnitContext.Panel);
+            var type = GetType(key);
+            //if (type == MetricType.Memory && Settings.Load().MemoryDisplayMode == 1) return "99.9";
+            
+            return type switch
+            {
+                MetricType.Frequency => "9.9",// GHz
+                // MetricType.Voltage => "1.25",// V
+                MetricType.RPM => "9999", // RPM
+                MetricType.DataSpeed => "9.9.",// MB
+                MetricType.DataSize => "9.9.",// MB
+                _ => "99.9"
+            };
         }
 
         public static string GetDisplayUnit(string key, string calculatedUnit, string userFormat)
@@ -180,7 +200,9 @@ namespace LiteMonitor.src.Core
             if (string.IsNullOrEmpty(userFormat) || userFormat.Equals("Auto", StringComparison.OrdinalIgnoreCase))
             {
                 if (string.IsNullOrEmpty(userFormat) && userFormat != null) return ""; // Empty = Hide
-                return (GetType(key) == MetricType.DataSpeed) ? calculatedUnit + "/s" : calculatedUnit;
+                // [Optimization] GetUnitStr already returns the correct unit (e.g., "MB" or "MB/s") based on context.
+                // We don't need to append "/s" here anymore.
+                return calculatedUnit;
             }
             return userFormat.Contains("{u}") ? userFormat.Replace("{u}", calculatedUnit) : userFormat;
         }
@@ -189,16 +211,6 @@ namespace LiteMonitor.src.Core
         /// <summary>
         /// 将字节数转换为带单位的友好显示，返回数值字符串与单位字符串。
         /// </summary>
-        /// <param name="bytes">原始字节数，允许为负值，内部会按绝对值处理。</param>
-        /// <param name="decimals">
-        /// 保留小数位数：
-        /// -1 表示自动：KB/MB 保留 1 位，GB 及以上保留 2 位；
-        /// 0  表示整数；
-        /// >0 表示固定小数位。
-        /// </param>
-        /// <returns>
-        /// 元组：(数值字符串, 单位字符串)，例如 ("12.3", "MB")。
-        /// </returns>
         public static (string val, string unit) FormatDataSizeParts(double bytes, int decimals = -1)
         {
             // 单位列表，从 KB 开始，后续依次乘以 1024 得到 MB、GB、TB、PB
@@ -216,16 +228,23 @@ namespace LiteMonitor.src.Core
             }
 
             // 根据 order 和 decimals 参数决定最终格式字符串
-            string format = decimals switch
+            // [Requirement] 所有数值：个位数显示两位小数点，两位数显示1位小数点，3位数不显示小数点
+            string format;
+            if (decimals >= 0)
             {
-                // 自动模式：KB/MB 用 1 位小数，GB 及以上用 2 位小数
-                < 0 => order <= 1 ? "0.0" : "0.00",
-                // 整数模式
-                0   => "0",
-                // 固定小数位模式，拼接出如 "0.000" 的格式
-                _   => "0." + new string('0', decimals)
-            };
-
+                // 固定小数位模式 (用于需要严格对齐的场景)
+                format = "0." + new string('0', decimals);
+                if (decimals == 0) format = "0";
+            }
+            else
+            {
+                // 自适应模式 (decimals < 0)
+                // 注意：len 是 double 类型，可能会有 9.99999 这种临界值，需要 Math.Floor 或判断范围
+                if (len < 10) format = "0.00";       // 0.00 - 9.99
+                else if (len < 100) format = "0.0";  // 10.0 - 99.9
+                else format = "0";                   // 100 - 999
+            }
+            
             // 返回格式化后的数值与对应单位
             return (len.ToString(format), sizes[order]);
         }
@@ -236,48 +255,7 @@ namespace LiteMonitor.src.Core
             return $"{val}{unit}{suffix}";
         }
 
-        public static string FormatHorizontalValue(string value)
-        {
-            if (string.IsNullOrWhiteSpace(value)) return value;
-            
-            // [Optimization] Avoid chained Replace calls which cause multiple allocations.
-            // Units are almost always at the end of the string.
-            string clean = value;
 
-            if (clean.EndsWith("/s", StringComparison.Ordinal))
-            {
-                clean = clean.Substring(0, clean.Length - 2);
-            }
-            
-            if (clean.EndsWith("RPM", StringComparison.Ordinal))
-            {
-                clean = clean.Substring(0, clean.Length - 3) + "R";
-            }
-            else if (clean.EndsWith("FPS", StringComparison.Ordinal))
-            {
-                clean = clean.Substring(0, clean.Length - 3) + "F";
-            }
-
-            clean = clean.Trim();
-
-            int splitIndex = -1;
-            for (int i = 0; i < clean.Length; i++)
-            {
-                if (!char.IsDigit(clean[i]) && clean[i] != '.' && clean[i] != '-') { splitIndex = i; break; }
-            }
-
-            if (splitIndex <= 0) return clean;
-
-            string numStr = clean.Substring(0, splitIndex);
-            string unit = clean.Substring(splitIndex).Trim();
-
-            // [Refactor] 统一数值格式化
-            if (double.TryParse(numStr, out double num))
-                // 数值 >= 100 时，四舍五入为整数
-                return (num >= 100 ? ((int)Math.Round(num)).ToString() : numStr) + unit;
-            
-            return clean;
-        }
 
         // =========================================================
         // 4. 评估逻辑 (原 MetricEvaluator)
@@ -290,10 +268,18 @@ namespace LiteMonitor.src.Core
             var type = GetType(key);
             double checkValue = value;
 
-            // 自适应缩放
+            // 对于动态范围的指标 (CPU频率, 功耗, 转速, FPS)，
+            // 状态判断应该基于它们相对于"历史最大值"的百分比，而不是绝对数值。
+            // 例如：如果 CPU 频率跑到了 历史最大值的 90%，就认为是高负载(红色)。
+            // 否则 4.0GHz 可能永远触发不了阈值。
             if (type is MetricType.Frequency or MetricType.Power or MetricType.RPM or MetricType.FPS or MetricType.Voltage or MetricType.Current)
             {
-                 checkValue = GetUnifiedPercent(key, value) * 100.0;
+                 // [Refactor] Use GetAdaptivePercentage directly since we are already inside the adaptive type check block
+                 checkValue = GetAdaptivePercentage(key, value) * 100.0;
+
+                 if (checkValue >= 90) return STATE_CRIT;
+                 if (checkValue >= 80) return STATE_WARN;
+                 return STATE_SAFE;
             }
             else if (type is MetricType.DataSpeed or MetricType.DataSize)
             {
@@ -334,13 +320,28 @@ namespace LiteMonitor.src.Core
             };
         }
 
-        public static double GetUnifiedPercent(string key, double value)
+        /// <summary>
+        /// 计算进度条显示值 (0.0 - 1.0)
+        /// 包含自适应最大值逻辑和最小视觉宽度修正 (5%)
+        /// </summary>
+        public static double GetProgressValue(string key, double value)
         {
+            // 1. 获取基础百分比 (自适应或归一化)
+            // [Refactor] Inlined GetUnifiedPercent logic
             var type = GetType(key);
-            if (type is MetricType.Frequency or MetricType.Power or MetricType.RPM or MetricType.FPS or MetricType.Voltage or MetricType.Current)
-                return GetAdaptivePercentage(key, value);
+            double rawPct;
             
-            return value / 100.0;
+            if (type is MetricType.Frequency or MetricType.Power or MetricType.RPM or MetricType.FPS or MetricType.Voltage or MetricType.Current)
+                rawPct = GetAdaptivePercentage(key, value);
+            else
+                rawPct = value / 100.0;
+
+            // 2. 负值处理 (充电状态) - 统一返回 1.0 (满条)，颜色由状态决定
+            if (rawPct < 0) rawPct = Math.Abs(rawPct);
+
+            // 3. 视觉修正：限制在 [0.05, 1.0] 之间
+            // 确保即使数值很小也能看到一条细线
+            return Math.Max(0.05, Math.Min(1.0, rawPct));
         }
 
         public static double GetAdaptivePercentage(string key, double val)

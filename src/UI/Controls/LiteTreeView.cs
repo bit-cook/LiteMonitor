@@ -257,20 +257,34 @@ namespace LiteMonitor.src.UI.Controls
         {
             if (!val.HasValue) return "-";
             float v = val.Value;
-            switch (type)
+
+            // 1. 数据类特殊处理 (LHM 单位转 Bytes)
+            if (type == SensorType.Data) return MetricUtils.FormatDataSize((double)v * 1073741824.0);
+            if (type == SensorType.SmallData) return MetricUtils.FormatDataSize((double)v * 1048576.0);
+
+            if (type == SensorType.Throughput) 
             {
-                case SensorType.Voltage: return $"{v:F3} V";
-                case SensorType.Clock: return v >= 1000 ? $"{v/1000:F1} GHz" : $"{v:F0} MHz";
-                case SensorType.Temperature: return $"{v:F0} °C";
-                case SensorType.Load: return $"{v:F1} %";
-                case SensorType.Level: return $"{v:F1} %";
-                case SensorType.Fan: return $"{v:F0} RPM";
-                case SensorType.Power: return $"{v:F1} W";
-                case SensorType.Data: return $"{v:F1} GB";
-                case SensorType.SmallData: return $"{v:F0} MB";
-                case SensorType.Throughput: return MetricUtils.FormatDataSize(v, "/s");
-                default: return $"{v:F1}";
+                string dummyKey = "NET.Throughput"; 
+                return MetricUtils.GetValueStr(dummyKey, v) + MetricUtils.GetUnitStr(dummyKey, v, MetricUtils.UnitContext.Panel);
             }
+
+            // 2. 映射到 MetricUtils 的 Key
+            string key = type switch
+            {
+                SensorType.Voltage => "VOLTAGE",
+                SensorType.Clock => "CLOCK",
+                SensorType.Temperature => "TEMP",
+                SensorType.Load => "LOAD",
+                SensorType.Level => "LOAD",
+                SensorType.Fan => "FAN",
+                SensorType.Power => "POWER",
+                _ => ""
+            };
+
+            if (string.IsNullOrEmpty(key)) return $"{v:F1}";
+
+            // 3. 使用统一的格式化逻辑
+            return MetricUtils.GetValueStr(key, v) + MetricUtils.GetUnitStr(key, v, MetricUtils.UnitContext.Panel);
         }
 
         protected override void OnMouseUp(MouseEventArgs e)

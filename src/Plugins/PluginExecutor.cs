@@ -49,7 +49,10 @@ namespace LiteMonitor.src.Plugins
         {
             lock (_httpLock)
             {
-                _http?.Dispose();
+                // [Optimized] Do NOT dispose the old client immediately to avoid ObjectDisposedException 
+                // in concurrent requests. Let GC handle the old instance.
+                // _http?.Dispose(); 
+                
                 _http = new HttpClient(new SocketsHttpHandler
                 {
                     SslOptions = new SslClientAuthenticationOptions
@@ -61,6 +64,16 @@ namespace LiteMonitor.src.Plugins
                 _http.Timeout = TimeSpan.FromSeconds(10); 
                 _http.DefaultRequestHeaders.Add("User-Agent", "LiteMonitor/1.0");
             }
+        }
+
+        public void ResetNetworkClients()
+        {
+            InitializeDefaultClient();
+            
+            // [Optimized] Clear proxy clients dictionary but do NOT dispose them.
+            // Other threads might be using them. Removing them from the dictionary ensures
+            // new requests get fresh clients, while old requests can finish (or fail safely).
+            _proxyClients.Clear();
         }
 
         public void Dispose()
@@ -204,8 +217,12 @@ namespace LiteMonitor.src.Plugins
                 }
                 return true;
             }
-            catch (OperationCanceledException) 
+            catch (OperationCanceledException opEx) 
             {
+                if (token.IsCancellationRequested) return false;
+                
+                // If token is NOT cancelled, it's a timeout. Treat as error to trigger reset logic.
+                HandleExecutionError(inst, tmpl, inputs, keySuffix, opEx);
                 return false;
             }
             catch (Exception ex)
@@ -581,12 +598,13 @@ namespace LiteMonitor.src.Plugins
         private void HandleExecutionError(PluginInstanceConfig inst, PluginTemplate tmpl, Dictionary<string, string> inputs, string keySuffix, Exception ex)
         {
             // [Fix] If default client encounters network error, force recreate it to pick up potential system proxy changes
+            // Also reset proxy clients as they might be stale or stuck in bad state
             if (ex is HttpRequestException || ex is TaskCanceledException || ex is OperationCanceledException)
             {
                  // Only reset if this instance is NOT using a specific proxy (i.e. using default client)
                  // We don't have easy access to the exact step config here easily, but checking if ANY step uses proxy is hard.
                  // Heuristic: Just recreate default client. It's cheap enough (once per 5s on error).
-                 InitializeDefaultClient();
+                 ResetNetworkClients();
             }
 
             // [Improvement] Even on error, try to resolve labels if possible (so user knows which item failed)

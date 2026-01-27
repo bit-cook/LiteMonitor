@@ -182,22 +182,11 @@ namespace LiteMonitor.src.UI.Helpers
             _form.SuspendLayout();
             try
             {
-                Point oldCenter = new Point(_form.Left + _form.Width / 2, _form.Top + _form.Height / 2);
-                
                 _cfg.HorizontalMode = !_cfg.HorizontalMode;
                 _cfg.Save();
                 
-                _ui.ApplyTheme(_cfg.Skin);
-                RebuildMenus();
-                
-                _winHelper.ApplyRoundedCorners();
-                
-                int newLeft = oldCenter.X - _form.Width / 2;
-                int newTop = oldCenter.Y - _form.Height / 2;
-                _form.Location = new Point(newLeft, newTop);
-
-                ClampToScreen(force: false);
-                SavePos();
+                // ★ 统一使用 AppActions，包含自动居中逻辑
+                LiteMonitor.src.Core.Actions.AppActions.ApplyThemeAndLayout(_cfg, _ui, (MainForm)_form);
             }
             finally
             {

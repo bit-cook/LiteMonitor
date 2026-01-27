@@ -144,33 +144,32 @@ namespace LiteMonitor
                 _cachedDisplayValue = DisplayValue;
                 if (isBat) _cachedChargingState = MetricUtils.IsBatteryCharging;
 
-                var (valStr, rawUnit) = MetricUtils.FormatValueParts(Key, DisplayValue);
-                CachedValueText = valStr;
-                CachedUnitText = MetricUtils.GetDisplayUnit(Key, rawUnit, userFormat);
+                // [Refactor] 使用新的原子函数分别构建普通和紧凑文本
+                
+                // 1. 标准模式 (Panel)
+                string valNormal = MetricUtils.GetValueStr(Key, DisplayValue, false);
+                string unitNormal = MetricUtils.GetUnitStr(Key, DisplayValue, MetricUtils.UnitContext.Panel);
+                
+                CachedValueText = valNormal;
+                CachedUnitText = MetricUtils.GetDisplayUnit(Key, unitNormal, userFormat);
                 _cachedNormalText = CachedValueText + CachedUnitText;
 
+                // 2. 紧凑模式 (Taskbar/Horizontal)
                 if (HasCustomUnit)
                 {
+                    // 自定义单位模式下，不做数值压缩，保持与 Panel 一致
                     _cachedHorizontalText = _cachedNormalText;
                 }
                 else
                 {
-                    string candidate;
-                    if (string.IsNullOrEmpty(userFormat) || userFormat == "Auto")
-                    {
-                         string autoUnit = MetricUtils.GetDisplayUnit(Key, rawUnit, "Auto"); 
-                         candidate = MetricUtils.FormatHorizontalValue(valStr + autoUnit);
-                    }
-                    else
-                    {
-                        candidate = valStr + CachedUnitText;
-                    }
-
-                    // [Optimization] Share string instance if content is identical to reduce memory
-                    if (candidate == _cachedNormalText) 
-                        _cachedHorizontalText = _cachedNormalText;
-                    else 
-                        _cachedHorizontalText = candidate;
+                    // 自动模式：启用数值压缩 (Compact=true) 和 紧凑单位 (Taskbar Context)
+                    string valCompact = MetricUtils.GetValueStr(Key, DisplayValue, true);
+                    string unitCompact = MetricUtils.GetUnitStr(Key, DisplayValue, MetricUtils.UnitContext.Taskbar);
+                    
+                    // 确保单位正确注入 (虽然 Auto 模式下 GetDisplayUnit 通常直接返回 unitCompact)
+                    string finalUnitCompact = MetricUtils.GetDisplayUnit(Key, unitCompact, "Auto");
+                    
+                    _cachedHorizontalText = valCompact + finalUnitCompact;
                 }
 
                 // Only calculate color if NOT a plugin item (already handled above)
@@ -179,7 +178,7 @@ namespace LiteMonitor
                     CachedColorState = MetricUtils.GetState(Key, DisplayValue);
                 }
                 
-                CachedPercent = MetricUtils.GetUnifiedPercent(Key, DisplayValue);
+                CachedPercent = MetricUtils.GetProgressValue(Key, DisplayValue);
             }
             return isHorizontal ? _cachedHorizontalText : _cachedNormalText;
         }

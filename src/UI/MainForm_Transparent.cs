@@ -54,6 +54,8 @@ namespace LiteMonitor
         
         // 供 Helper 调用
         public void ToggleLayoutMode() => _bizHelper.ToggleLayoutMode();
+        public void EnsureVisibleAndSavePos() => _bizHelper.SavePos();
+        public void ApplyRoundedCorners() => _winHelper.ApplyRoundedCorners();
         
         // 供外部调用
         public void OpenTaskManager() => _bizHelper.OpenTaskManager();

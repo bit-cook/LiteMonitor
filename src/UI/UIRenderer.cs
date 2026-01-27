@@ -151,12 +151,7 @@ namespace LiteMonitor
             bool narrow = t.Layout.Width < 240 * t.Layout.LayoutScale;
             string valText = it.GetFormattedText(narrow);
             
-            // 只有在【窄屏】且【用户没有自定义单位】的情况下，才执行 "FormatHorizontalValue" (去/s 等操作)
-            // GetFormattedText 内部其实已经处理了这部分逻辑，这里再次处理是为了防守
-            if (narrow && !it.HasCustomUnit) 
-            {
-                valText = MetricUtils.FormatHorizontalValue(valText);
-            }
+
 
             Color valColor = it.GetTextColor(t);
 

@@ -34,7 +34,7 @@ namespace LiteMonitor.src.UI.SettingsPage
                 try {
                     return FontFamily.Families.Select(f => f.Name).ToList();
                 } catch {
-                    return new List<string> { "Microsoft YaHei UI" };
+                    return new List<string> { Settings.DEFAULT_TB_FONT };
                 }
             });
 
@@ -68,7 +68,7 @@ namespace LiteMonitor.src.UI.SettingsPage
             this.SuspendLayout();
             try
             {
-                string current = Config.TaskbarFontFamily ?? "Microsoft YaHei UI";
+                string current = Config.TaskbarFontFamily ?? Settings.DEFAULT_TB_FONT;
                 if (!fonts.Contains(current)) fonts.Insert(0, current);
 
                 _cbFont.Inner.BeginUpdate();
@@ -110,13 +110,28 @@ namespace LiteMonitor.src.UI.SettingsPage
                 // ★★★ 修复：复杂的判空逻辑 ★★★
                 () => {
                     if (Config == null) return 0; // 默认值
-                    return (!Config.TaskbarFontBold && Math.Abs(Config.TaskbarFontSize - 9f) < 0.1f) ? 1 : 0;
+                    return (!Config.TaskbarFontBold && Math.Abs(Config.TaskbarFontSize - Settings.DEFAULT_TB_SIZE_REGULAR) < 0.1f) ? 1 : 0;
                 },
                 idx => {
                     // ★★★ 修复：移除对 Config.TaskbarCustomLayout 的检查 ★★★
                     if (Config != null) {
-                        if (idx == 1) { Config.TaskbarFontBold = false; Config.TaskbarFontSize = 9f; }
-                        else { Config.TaskbarFontBold = true; Config.TaskbarFontSize = 10f; }
+                        if (idx == 1) { 
+                            // 细字模式 (Regular)
+                            Config.TaskbarFontBold = false; 
+                            Config.TaskbarFontSize = Settings.DEFAULT_TB_SIZE_REGULAR;
+                            // 同时也预设推荐的间距，防止用户开启自定义时错位
+                            Config.TaskbarInnerSpacing = Settings.DEFAULT_TB_INNER_REGULAR;
+                            Config.TaskbarItemSpacing = Settings.DEFAULT_TB_GAP;
+                            Config.TaskbarVerticalPadding = Settings.DEFAULT_TB_VOFF;
+                        }
+                        else { 
+                            // 粗字模式 (Bold)
+                            Config.TaskbarFontBold = true; 
+                            Config.TaskbarFontSize = Settings.DEFAULT_TB_SIZE_BOLD;
+                            Config.TaskbarInnerSpacing = Settings.DEFAULT_TB_INNER_BOLD;
+                            Config.TaskbarItemSpacing = Settings.DEFAULT_TB_GAP;
+                            Config.TaskbarVerticalPadding = Settings.DEFAULT_TB_VOFF;
+                        }
                     }
                 }
             );
@@ -191,9 +206,9 @@ namespace LiteMonitor.src.UI.SettingsPage
             }
 
             // ★★★ 字体 ComboBox (LiteComboBox) ★★★
-            var initialFonts = new List<string> { "Microsoft YaHei UI" };
+            var initialFonts = new List<string> { Settings.DEFAULT_TB_FONT };
             _cbFont = (LiteComboBox)group.AddCombo(this, "Menu.TaskbarFont", initialFonts, 
-                () => Config?.TaskbarFontFamily ?? "Microsoft YaHei UI", 
+                () => Config?.TaskbarFontFamily ?? Settings.DEFAULT_TB_FONT, 
                 v => { if(Config!=null && Config.TaskbarCustomLayout) Config.TaskbarFontFamily = v; }
             );
             AddL(_cbFont);
@@ -201,7 +216,7 @@ namespace LiteMonitor.src.UI.SettingsPage
             group.AddHint(LanguageManager.T("Menu.TaskbarCustomLayoutTip"));
 
             AddL(group.AddDouble(this, "Menu.TaskbarFontSize", "pt", 
-                () => Config?.TaskbarFontSize ?? 9f, 
+                () => Config?.TaskbarFontSize ?? Settings.DEFAULT_TB_SIZE_REGULAR, 
                 v => { if(Config!=null && Config.TaskbarCustomLayout) Config.TaskbarFontSize = (float)v; }));
             
             AddL(group.AddToggle(this, "Menu.TaskbarFontBold", 
@@ -210,15 +225,15 @@ namespace LiteMonitor.src.UI.SettingsPage
 
 
             AddL(group.AddInt(this, "Menu.TaskbarItemSpacing", "px", 
-                () => Config?.TaskbarItemSpacing ?? 10, 
+                () => Config?.TaskbarItemSpacing ?? Settings.DEFAULT_TB_GAP, 
                 v => { if(Config!=null && Config.TaskbarCustomLayout) Config.TaskbarItemSpacing = v; }));
             
             AddL(group.AddInt(this, "Menu.TaskbarInnerSpacing", "px", 
-                () => Config?.TaskbarInnerSpacing ?? 4, 
+                () => Config?.TaskbarInnerSpacing ?? Settings.DEFAULT_TB_INNER_REGULAR, 
                 v => { if(Config!=null && Config.TaskbarCustomLayout) Config.TaskbarInnerSpacing = v; }));
             
             AddL(group.AddInt(this, "Menu.TaskbarVerticalPadding", "px", 
-                () => Config?.TaskbarVerticalPadding ?? 0, 
+                () => Config?.TaskbarVerticalPadding ?? Settings.DEFAULT_TB_VOFF, 
                 v => { if(Config!=null && Config.TaskbarCustomLayout) Config.TaskbarVerticalPadding = v; }));
 
             AddGroupToPage(group);

@@ -108,6 +108,26 @@ namespace LiteMonitor.src.UI.SettingsPage
                 () => (Config.UIScale * 100) + "%",
                 s => Config.UIScale = MetricUtils.ParseDouble(s) / 100.0);
 
+            // 6. Spacing (Advanced)
+            var spacingControls = new System.Collections.Generic.List<Control>();
+            
+            var chkFollow = group.AddToggle(this, "Menu.HorizontalFollowsTaskbar", 
+                () => Config.HorizontalFollowsTaskbar, 
+                v => Config.HorizontalFollowsTaskbar = v);
+            
+            // Add custom spacing controls
+            // Combine language fields: Horizontal Mode - Item Spacing / Value Spacing
+            string titleItem = LanguageManager.T("Menu.Horizontal") + " - " + LanguageManager.T("Menu.TaskbarItemSpacing");
+            string titleInner = LanguageManager.T("Menu.Horizontal") + " - " + LanguageManager.T("Menu.TaskbarInnerSpacing");
+
+            spacingControls.Add(group.AddInt(this, titleItem, "px",
+                () => Config.HorizontalItemSpacing,
+                v => Config.HorizontalItemSpacing = v));
+                
+            spacingControls.Add(group.AddInt(this, titleInner, "px",
+                () => Config.HorizontalInnerSpacing,
+                v => Config.HorizontalInnerSpacing = v));
+            
             AddGroupToPage(group);
         }
 

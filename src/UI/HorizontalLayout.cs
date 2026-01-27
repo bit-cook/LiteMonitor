@@ -93,7 +93,7 @@ namespace LiteMonitor
 
 
              // 组间距逻辑
-            int gapBase = (_mode == LayoutMode.Taskbar) ? s.Gap : 12; 
+            int gapBase = (_mode == LayoutMode.Taskbar) ? s.Gap : _settings.HorizontalItemSpacing; 
             int gap = (int)Math.Round(gapBase * dpi); 
 
             if (cols.Count > 1) totalWidth += (cols.Count - 1) * gap;
@@ -211,8 +211,11 @@ namespace LiteMonitor
                         new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding).Width;
 
                     // 3. Padding
-                    int paddingX = _rowH;
-                    if (_mode == LayoutMode.Taskbar) paddingX = (int)Math.Round(s.Inner * dpi);
+                    int paddingX;
+                    if (_mode == LayoutMode.Taskbar || _settings.HorizontalFollowsTaskbar)
+                        paddingX = (int)Math.Round(s.Inner * dpi);
+                    else
+                        paddingX = (int)Math.Round(_settings.HorizontalInnerSpacing * dpi);
 
                     return wLabel + wValue + paddingX;
                 }
@@ -229,45 +232,58 @@ namespace LiteMonitor
 
         private string GenerateSampleText(MetricItem item)
         {
-            // 1. 运行时动态文本 (DASH/IP) 直接返回真实值
-            if (!string.IsNullOrEmpty(item.TextValue)) return item.TextValue;
+            // 1. 获取基础数值文本与默认单位
+            // [Optimization] 优先使用缓存的 TextValue，避免重复计算
+            string val = item.TextValue ?? "";
+            string rawUnit = "";
 
-            // 2. 估算数值宽度
-            var type = MetricUtils.GetType(item.Key);
-            string val = type switch
+            // 如果没有 TextValue 且不是插件项，则使用硬件估算逻辑
+            if (string.IsNullOrEmpty(val) && !item.Key.StartsWith("DASH.", StringComparison.OrdinalIgnoreCase))
             {
-                MetricType.Frequency => "9.9",// GHz
-                MetricType.Voltage => "1.25",// V
-                MetricType.RPM => "9999",// RPM
-                MetricType.Memory when _settings.MemoryDisplayMode == 1 => "99.9",// GB
-                MetricType.DataSpeed => "9.9",// MB/s   
-                _ => "999" // 覆盖 Power, Percent(100), Temp(100), DataSize(999), FPS(999) 等
-            };
+                // [Hardware] 硬件监控项：计算估算值
+                val = MetricUtils.GetSampleValueStr(item.Key);
 
-            // 3. 确定基础单位 (用于占位或替换 {u})
-            // HorizontalLayout 专用于横向布局（横条/任务栏），始终使用 Taskbar 上下文获取紧凑单位
-            string rawUnit = type switch
-            {
-                MetricType.DataSpeed or MetricType.DataSize => "MB",
-                _ => MetricUtils.GetDefaultUnit(item.Key, MetricUtils.UnitContext.Taskbar)
-                                .Replace("{u}", "") // 移除占位符
-            };
+                // [Refactor] 确定默认单位 (数据类强制使用 MB 以保证宽度充足)
+                var type = MetricUtils.GetType(item.Key);
+                if (type == MetricType.DataSpeed || type == MetricType.DataSize)
+                {
+                    rawUnit = "MB"; 
+                }
+                else
+                {
+                    rawUnit = MetricUtils.GetUnitStr(item.Key, 0, MetricUtils.UnitContext.Taskbar);
+                }
+            }
 
-            // 4. 获取最终显示单位 (始终使用 UnitTaskbar 配置)
+            // 2. 处理显示单位 (叠加用户配置)
             string userFmt = item.BoundConfig?.UnitTaskbar;
             string unit = MetricUtils.GetDisplayUnit(item.Key, rawUnit, userFmt);
 
-            // [Fix] 横向布局空间紧凑，DataSpeed 即使配置了 Auto 也不显示 /s
-            if (type == MetricType.DataSpeed && unit.EndsWith("/s"))
+            // 3. 拼接并生成样本 (将所有数字替换为 '0')
+            // [Optimization] 使用 string.Create 避免中间数组分配 (Net 8.0+)
+            bool appendUnit = !string.IsNullOrEmpty(unit) && !val.EndsWith(unit);
+            int totalLen = val.Length + (appendUnit ? unit.Length : 0);
+            
+            return string.Create(totalLen, (val, unit, appendUnit), (span, state) =>
             {
-                unit = unit.Substring(0, unit.Length - 2);
-            }
-
-            // 5. 电池充电图标
-            if (MetricUtils.IsBatteryCharging && item.Key.StartsWith("BAT", StringComparison.OrdinalIgnoreCase))
-                unit += "⚡";
-
-            return val + unit;
+                var (v, u, append) = state;
+                int pos = 0;
+                
+                // 写入数值部分 (数字转0)
+                foreach (char c in v)
+                {
+                    span[pos++] = char.IsDigit(c) ? '0' : c;
+                }
+                
+                // 写入单位部分
+                if (append)
+                {
+                    foreach (char c in u)
+                    {
+                        span[pos++] = char.IsDigit(c) ? '0' : c; 
+                    }
+                }
+            });
         }
 
         private string GetMaxValueSample(Column col, bool isTop)
@@ -275,10 +291,7 @@ namespace LiteMonitor
             var item = isTop ? col.Top : col.Bottom;
             if (item == null) return "";
 
-            // 动态文本仅关注长度变化
-            if (!string.IsNullOrEmpty(item.TextValue))
-                return new string('0', item.TextValue.Length);
-
+            // [Fix] 统一使用 GenerateSampleText 生成样本 (包含单位和数字转0)
             return GenerateSampleText(item);
         }
 

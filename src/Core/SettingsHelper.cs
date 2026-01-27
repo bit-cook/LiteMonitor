@@ -381,10 +381,12 @@ namespace LiteMonitor
             // 如果未开启自定义布局，使用标准布局参数，但 字体大小/加粗 依然尊重用户设置
             // 修复：此前逻辑会忽略 TaskbarFontSize，导致“大字/小字模式”切换无效
             return new Settings.TBStyle {
-                Font = "Microsoft YaHei UI", 
+                Font = Settings.DEFAULT_TB_FONT, 
                 Size = settings.TaskbarFontSize, // 修复：使用设置值而不是硬编码
                 Bold = settings.TaskbarFontBold,
-                Gap = 6, Inner = settings.TaskbarFontBold ? 10 : 8, VOff = 2 
+                Gap = Settings.DEFAULT_TB_GAP, 
+                Inner = settings.TaskbarFontBold ? Settings.DEFAULT_TB_INNER_BOLD : Settings.DEFAULT_TB_INNER_REGULAR, 
+                VOff = Settings.DEFAULT_TB_VOFF 
             };
         }
 

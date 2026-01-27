@@ -77,6 +77,11 @@ namespace LiteMonitor.src.UI.SettingsPage
                 AutoSize = true, Visible = false, ForeColor = UIColors.TextSub, Font = UIFonts.Bold(9F)
             };
             
+            // Immediate binding to avoid conflict with MainPanelPage
+            _chkLinkHorizontal.CheckedChanged += (s, e) => {
+                if (Config != null) Config.HorizontalFollowsTaskbar = _chkLinkHorizontal.Checked;
+            };
+            
             _chkOnlyVisible = new LiteCheck(false, LanguageManager.T("Menu.OnlyShowEnabled")) 
             {
                 AutoSize = true, Visible = false, ForeColor = UIColors.TextSub, Font = UIFonts.Bold(9F)
@@ -154,6 +159,10 @@ namespace LiteMonitor.src.UI.SettingsPage
         {
             base.OnShow();
             if (Config == null) return;
+
+            // Sync Checkbox if in taskbar tab (in case it was changed in MainPanelPage)
+            if (_isTaskbarTab)
+                _chkLinkHorizontal.Checked = Config.HorizontalFollowsTaskbar;
 
             // 1. 计算数据指纹 (Data Signature)
             // 只要 Config.MonitorItems 的内容（Keys的组合）没变，我们就不需要重新加载

@@ -137,11 +137,13 @@ namespace LiteMonitor.src.Core.Actions
 
         public static void ApplyThemeAndLayout(Settings cfg, UIController? ui, MainForm form)
         {
-            // ApplyTheme 内部已经处理了：
-            // - Skin 解析
-            // - UIScale 和 PanelWidth 的计算
-            // - RefreshMs (重置 Timer)
-            // - HorizontalMode (切换渲染器)
+            // 仅当模式切换时（UI状态与配置不符）记录中心点
+            Point? center = null;
+            if (ui != null && ui.IsLayoutHorizontal != cfg.HorizontalMode && form.Visible)
+            {
+                center = new Point(form.Left + form.Width / 2, form.Top + form.Height / 2);
+            }
+
             ui?.ApplyTheme(cfg.Skin);
             
             // 如果切换了横竖屏模式，菜单结构会变，需要重建
@@ -149,6 +151,13 @@ namespace LiteMonitor.src.Core.Actions
             
             // 刷新任务栏窗口
             ReloadTaskbarWindows();
+
+            if (center.HasValue)
+            {
+                form.ApplyRoundedCorners();
+                form.Location = new Point(center.Value.X - form.Width / 2, center.Value.Y - form.Height / 2);
+                form.EnsureVisibleAndSavePos();
+            }
         }
 
         // =============================================================

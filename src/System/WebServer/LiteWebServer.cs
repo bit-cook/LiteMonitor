@@ -440,54 +440,16 @@ namespace LiteMonitor.src.WebServer
 
                     if (val != null)
                     {
-                        var parts = MetricUtils.FormatValueParts(item.Key, val.Value);
-                        valStr = parts.valStr;
-                        unit = parts.unitStr;
+                        valStr = MetricUtils.GetValueStr(item.Key, val.Value);
+                        unit = MetricUtils.GetUnitStr(item.Key, val.Value, MetricUtils.UnitContext.Panel);
 
-                        bool isRate = (item.Key.StartsWith("NET") || item.Key.StartsWith("DISK")) && !item.Key.Contains("Temp");
-                        if (isRate && !string.IsNullOrEmpty(unit)) unit += "/s";
-
+                        // [Fix] Removed manual "/s" appending logic.
+                        // MetricUtils.GetUnitStr(UnitContext.Panel) already returns "MB/s" for DataSpeed items.
+                        
                         // 计算百分比 (复用 UIUtils 的核心逻辑)
-                        // ★★★ [修复] 强制使用 UIUtils 逻辑，并正确处理负值 ★★★
-                        
-                        double rawPct = 0;
-                        // Case A: 原生百分比类型 (Load / Temp / Mem) 或单位为 %
-                        // ★★★ [修复] 显式检查 Memory 类型，确保在容量显示模式下(单位变为GB)进度条依然正常 ★★★
-                        var mType = MetricUtils.GetType(item.Key);
-                        if (mType == MetricType.Memory || item.Key.Contains("Load") || item.Key.Contains("Temp") || unit.Contains("%"))
-                        {
-                            // Load 和 Temp 本身数值就是 0-100 (或近似)，直接除以 100 归一化
-                            // 注意：Temp 主界面也是当作 0-100 处理的 (虽然理论可以更高，但 100度 满条是合理的)
-                            rawPct = val.Value / 100.0;
-                        }
-                         // Case B: 已知最大值的类型 (Clock/Power/Fan/Pump/FPS/Battery)
-                         else if (item.Key.Contains("Clock") || item.Key.Contains("Power") || 
-                            item.Key.Contains("Fan") || item.Key.Contains("Pump") || item.Key.Contains("FPS") || 
-                            item.Key.Contains("Voltage") || item.Key.Contains("Current")) 
-                        {
-                            rawPct = MetricUtils.GetAdaptivePercentage(item.Key, val.Value);
-                        }
-                        // Case C: 速率类型 (Net/Disk)
-                        else if (isRate)
-                        {
-                            // 速率类型的最大值是 100MB/s (写死的魔法值，参考原代码逻辑)
-                            rawPct = val.Value / (100 * 1024 * 1024);
-                        }
-                        
-                        // [严格复刻 UIUtils.DrawBar 逻辑]
-                        // 1. 如果是负数（充电状态），DrawBar 会保留负值，但 DrawBar 内部有 Math.Max(0.05, ...)
-                        //    在网页版，我们需要把这个逻辑显式写出来，因为 CSS width 不支持负数
-                        if (rawPct < 0)
-                        {
-                            // 如果是负数，强制显示为最小可见进度 (5%)
-                            // 这样用户知道它还在运作，但不会显示错误的满条
-                            pct = 1.0; 
-                        }
-                        else
-                        {
-                            // 2. 正常正数：限制在 [0.05, 1.0] 之间，防止进度条彻底消失
-                            pct = Math.Max(0.01, Math.Min(1.0, rawPct)) * 100;
-                        }
+                        // ★★★ [修复] 强制使用 MetricUtils.GetProgressValue 统一逻辑 ★★★
+                        // GetProgressValue 已经处理了自适应最大值、负值(充电)、最小宽度(5%)等所有逻辑
+                        pct = MetricUtils.GetProgressValue(item.Key, val.Value) * 100.0;
 
                         status = MetricUtils.GetState(item.Key, val.Value);
                     }
