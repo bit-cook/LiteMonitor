@@ -254,10 +254,12 @@ namespace LiteMonitor.src.UI.SettingsPage
 
             // Real-time visibility toggle
             chk.CheckedChanged += (s, e) => {
-                // [Fix] Removed SuspendLayout to prevent "Unable to set Win32 parent" crash
-                // group.SuspendLayout();
-                foreach (var c in targetVisibles) c.Visible = chk.Checked;
-                // group.ResumeLayout();
+                if (group.IsDisposed) return;
+                foreach (var c in targetVisibles) 
+                {
+                    if (c != null && !c.IsDisposed)
+                        c.Visible = chk.Checked;
+                }
             };
 
             // 3. Refresh Rate
@@ -429,10 +431,14 @@ namespace LiteMonitor.src.UI.SettingsPage
                 targetVisibles.Add(btnAdd);
             }
 
+            // [Fix] 先将组添加到页面，确保其父窗口链完整，防止 "未能设置控件的 Win32 父窗口" 崩溃
+            AddGroupToPage(group);
+            
+            // [Fix] 强制创建句柄，确保子控件在设置可见性时能找到有效的父句柄
+            if (!group.IsHandleCreated) { var _ = group.Handle; }
+
             // Initial visibility state
             foreach (var c in targetVisibles) c.Visible = chk.Checked;
-
-            AddGroupToPage(group);
         }
 
         private void AddGroupToPage(LiteSettingsGroup group)

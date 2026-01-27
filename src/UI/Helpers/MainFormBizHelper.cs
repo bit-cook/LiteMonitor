@@ -315,6 +315,12 @@ namespace LiteMonitor.src.UI.Helpers
                 await UpdateChecker.CheckAsync();
                 CheckUpdateSuccess();
 
+                // 如果发现新版本，重新构建菜单以显示“发现新版本”按钮
+                if (UpdateChecker.IsUpdateFound)
+                {
+                    _form.BeginInvoke(new Action(() => RebuildMenus()));
+                }
+
                 // [Fix] 再次确认窗口属性（置顶、穿透），作为启动后的二次校验，确保功能与 UI 勾选一致
                 _form.BeginInvoke(new Action(() => {
                     Core.Actions.AppActions.ApplyWindowAttributes(_cfg, (MainForm)_form);

@@ -92,11 +92,10 @@ namespace LiteMonitor.src.Core
                      if (totalGB > 0)
                      {
                          // 转换为字节 -> 格式化 -> 取数值部分
-                         return FormatDataSizeParts((v / 100.0) * totalGB * 1073741824.0, 1).val;
+                         // [Refactor] 使用自适应格式化 (-1)，确保 100GB 时不显示 .0
+                         return FormatDataSizeParts((v / 100.0) * totalGB * 1073741824.0, -1).val;
                      }
                  }
-                 // 百分比模式
-                 return $"{v:0.0}";
             }
 
             // 2. 数据量/速度 (自动单位缩放)
@@ -107,14 +106,35 @@ namespace LiteMonitor.src.Core
 
             // 4. 标准模式 (Panel)
             if (type == MetricType.FPS || type == MetricType.RPM) return $"{v:0}";
-            if (type == MetricType.Frequency) return $"{v/1000f:F1}"; // 频率特殊：基准是 MHz，显示是 GHz，这里已经除以1000了
+            if (type == MetricType.Frequency) return $"{v/1000f:F1}"; // 频率保持 F1，通常 GHz 需要一位小数
             
-            // 内存百分比、负载等
+            // 内存百分比、负载、温度、功耗等
+            // [Refactor] 统一调用自适应格式化逻辑
+            return FormatValueAdaptive(Math.Abs(v), -1);
+        }
 
-            float absV = Math.Abs(v);// 处理电池功耗负数时，取绝对值
-            if (absV < 10) return $"{v:0.00}";
-            if (absV < 100) return $"{v:0.0}";
-            return $"{v:0}";
+        /// <summary>
+        /// 内部通用的数值格式化逻辑 (自适应小数点)
+        /// </summary>
+        private static string FormatValueAdaptive(double val, int decimals)
+        {
+            if (decimals >= 0)
+            {
+                // 固定小数位模式
+                string format = "0." + new string('0', decimals);
+                if (decimals == 0) format = "0";
+                
+                // [Fix] 即使是固定模式，如果数值 >= 99.95，也遵循用户习惯显示为整数
+                // 除非 decimals > 1 (通常是电压/电流等需要高精度的场合)
+                if (val >= 99.95 && decimals <= 1) return val.ToString("0");
+                
+                return val.ToString(format);
+            }
+
+            // 自适应模式 (decimals < 0)
+            if (val < 9.995) return val.ToString("0.00");   // 0.00 - 9.99
+            if (val < 99.95) return val.ToString("0.0");   // 10.0 - 99.9
+            return val.ToString("0");                      // 100+
         }
 
         public enum UnitContext
@@ -227,26 +247,8 @@ namespace LiteMonitor.src.Core
                 len /= 1024.0;
             }
 
-            // 根据 order 和 decimals 参数决定最终格式字符串
-            // [Requirement] 所有数值：个位数显示两位小数点，两位数显示1位小数点，3位数不显示小数点
-            string format;
-            if (decimals >= 0)
-            {
-                // 固定小数位模式 (用于需要严格对齐的场景)
-                format = "0." + new string('0', decimals);
-                if (decimals == 0) format = "0";
-            }
-            else
-            {
-                // 自适应模式 (decimals < 0)
-                // 注意：len 是 double 类型，可能会有 9.99999 这种临界值，需要 Math.Floor 或判断范围
-                if (len < 10) format = "0.00";       // 0.00 - 9.99
-                else if (len < 100) format = "0.0";  // 10.0 - 99.9
-                else format = "0";                   // 100 - 999
-            }
-            
             // 返回格式化后的数值与对应单位
-            return (len.ToString(format), sizes[order]);
+            return (FormatValueAdaptive(len, decimals), sizes[order]);
         }
 
         public static string FormatDataSize(double bytes, string suffix = "", int decimals = -1)

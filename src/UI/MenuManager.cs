@@ -530,6 +530,26 @@ namespace LiteMonitor
 
             menu.Items.Add(new ToolStripSeparator());
 
+            // === 发现新版本 ===
+            if (UpdateChecker.IsUpdateFound)
+            {
+                bool isZh = cfg.Language?.ToLower().Contains("zh") == true;
+                string text = isZh ? $"💡发现新版本(v{UpdateChecker.LatestVersionInfo?.latest})" : $"🔄New version(v{UpdateChecker.LatestVersionInfo?.latest})";
+                
+                var updateItem = new ToolStripMenuItem(text);
+                // 鼠标停留提示更新日期与内容摘要 (移除加粗和自定义颜色以解决托盘菜单闪烁问题)
+                string? rawLog = UpdateChecker.LatestVersionInfo?.changelog;
+                string logSummary = string.IsNullOrEmpty(rawLog) ? "" : rawLog.Replace("\r", "").Replace("\n", " ");
+                if (logSummary.Length > 45) logSummary = string.Concat(logSummary.AsSpan(0, 45), "...");
+                updateItem.ToolTipText = $"{UpdateChecker.LatestVersionInfo?.releaseDate}: {logSummary}";
+                updateItem.ForeColor = Color.RoyalBlue;
+                updateItem.Font = new Font(updateItem.Font, FontStyle.Bold);
+                
+                updateItem.Click += async (_, __) => await UpdateChecker.CheckAsync(true);
+                menu.Items.Add(updateItem);
+                menu.Items.Add(new ToolStripSeparator());
+            }
+
             // === 退出 ===
             var exit = new ToolStripMenuItem(LanguageManager.T("Menu.Exit"));
             exit.Click += (_, __) => form.Close();

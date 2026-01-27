@@ -69,6 +69,16 @@ namespace LiteMonitor
             
         };
 
+        /// <summary>
+        /// 缓存最新版本信息，供菜单等处使用
+        /// </summary>
+        public static (string latest, string changelog, string releaseDate)? LatestVersionInfo { get; private set; }
+
+        /// <summary>
+        /// 是否发现了新版本
+        /// </summary>
+        public static bool IsUpdateFound => LatestVersionInfo != null;
+
 
         // ========================================================
         // 【3】主入口：检查更新
@@ -81,10 +91,6 @@ namespace LiteMonitor
         {
             try
             {
-                // ★★★ [新增] 预检查设置：是否开启自动更新 ★★★
-                var settings = Settings.Load();
-                if (!showMessage && !settings.AutoCheckUpdate) return;
-
                 // ---- 获取版本信息（自动 fallback）----
                 var info = await GetVersionInfo();
                 if (info == null)
@@ -113,6 +119,14 @@ namespace LiteMonitor
 
                 if (new Version(latest) > new Version(current))
                 {
+                    // 记录发现新版本
+                    LatestVersionInfo = info;
+
+                    // ★★★ [新增逻辑] 预检查设置：是否开启自动更新 ★★★
+                    // 如果不是手动触发 (showMessage=false) 且未开启自动检查，则只记录不弹窗
+                    var settings = Settings.Load();
+                    if (!showMessage && !settings.AutoCheckUpdate) return;
+
                     // ---- 获取排序后的下载源 (最快优先) ----
                     var sortedUrls = await GetSortedZipUrls(latest);
 
@@ -134,6 +148,9 @@ namespace LiteMonitor
                 }
                 else
                 {
+                    // 已是最新版本，清除缓存
+                    LatestVersionInfo = null;
+
                     if (showMessage)
                     {
                         // 根据当前语言设置显示中文或英文版本
