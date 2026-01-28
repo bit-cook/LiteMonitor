@@ -235,7 +235,7 @@ namespace LiteMonitor
                     {
                         try 
                         {
-                            await Task.Delay(1000); // 等待1秒让Explorer缓口气
+                            await Task.Delay(3000); // 等待3秒让Explorer缓口气
                             ToggleTaskbar(false);   // 彻底销毁旧实例
                             ToggleTaskbar(true);    // 创建新实例(新实例自带重试机制)
                         }
@@ -307,8 +307,8 @@ namespace LiteMonitor
                     this.TopMost = true;
                     this.BringToFront();
                     
-                    // 2. 延迟 500ms 后进行二次校验，防止被其他启动项抢夺置顶
-                    await Task.Delay(500);
+                    // 2. 延迟 3秒 后进行二次校验，防止被其他启动项抢夺置顶
+                    await Task.Delay(3000);
                     if (this.Visible && !this.TopMost) this.TopMost = true;
                 }));
             }

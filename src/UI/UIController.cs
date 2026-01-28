@@ -361,7 +361,8 @@ namespace LiteMonitor
                     .ToList();
             }
 
-            bool singleLine = forTaskbar && _cfg.TaskbarSingleLine;
+            bool singleLine = (forTaskbar && _cfg.TaskbarSingleLine) || 
+                              (!forTaskbar && _cfg.HorizontalMode && _cfg.HorizontalSingleLine);
             int step = singleLine ? 1 : 2;
 
             for (int i = 0; i < items.Count; i += step)

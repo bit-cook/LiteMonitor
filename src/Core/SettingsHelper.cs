@@ -325,7 +325,7 @@ namespace LiteMonitor
 
                 // === B. Taskbar SortIndex ===
                 int targetTbIndex;
-                if (anchor != null && anchor.TaskbarSortIndex != 0)
+                if (anchor != null)
                 {
                     targetTbIndex = anchor.TaskbarSortIndex + 1;
                 }
@@ -333,8 +333,8 @@ namespace LiteMonitor
                 {
                     // [Fix] 没锚点 (如 DASH 这种排在队首的) 或锚点未开启任务栏
                     // 策略：看该项在 Default 中的原始意图。
-                    // 如果 Default 中 TaskbarSortIndex 很大 (>500)，说明意图是放后面 -> 插在 Max + 1
-                    // 如果 Default 中 TaskbarSortIndex 很小 (<500)，说明意图是放前面 -> 插在 Min - 1
+                    // 如果 Default 中 TaskbarSortIndex 很大 (>1000)，说明意图是放后面 -> 插在 Max + 1
+                    // 如果 Default 中 TaskbarSortIndex 很小 (<1000)，说明意图是放前面 -> 插在 Min - 1
                     
                     var validItems = settings.MonitorItems.Where(x => x.TaskbarSortIndex != 0).ToList();
                     

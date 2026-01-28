@@ -26,19 +26,21 @@ namespace LiteMonitor
         private static void DrawColumn(Graphics g, Column col, Theme t)
         {
             if (col.Bounds == Rectangle.Empty) return;
-            // ★★★ [新增]：如果只有 Top 没有 Bottom，则让 Top 占用整个 Bounds (实现垂直居中)
-            if (col.Bottom == null && col.Top != null)
+
+            // ★★★ 优化：优先使用 Layout 预计算好的 Bounds，不再重复计算 ★★★
+            // 这样可以同时兼容双行模式、任务栏单行模式、以及横条单行模式
+
+            // 1. 绘制 Top
+            if (col.BoundsTop != Rectangle.Empty && col.Top != null)
             {
-                DrawItem(g, col.Top, col.Bounds, t);
-                return;
+                DrawItem(g, col.Top, col.BoundsTop, t);
             }
 
-            int half = col.Bounds.Height / 2;
-            var rectTop = new Rectangle(col.Bounds.X, col.Bounds.Y, col.Bounds.Width, half);
-            var rectBottom = new Rectangle(col.Bounds.X, col.Bounds.Y + half, col.Bounds.Width, half);
-
-            if (col.Top != null) DrawItem(g, col.Top, rectTop, t);
-            if (col.Bottom != null) DrawItem(g, col.Bottom, rectBottom, t);
+            // 2. 绘制 Bottom
+            if (col.BoundsBottom != Rectangle.Empty && col.Bottom != null)
+            {
+                DrawItem(g, col.Bottom, col.BoundsBottom, t);
+            }
         }
 
         private static void DrawItem(Graphics g, MetricItem it, Rectangle rc, Theme t)

@@ -58,6 +58,7 @@ namespace LiteMonitor
             int pad = _padding;
             int padV = _padding / 2;
             bool isTaskbarSingle = (_mode == LayoutMode.Taskbar && _settings.TaskbarSingleLine);
+            bool isHorizontalSingle = (_mode == LayoutMode.Horizontal && _settings.HorizontalSingleLine);
 
             if (_mode == LayoutMode.Taskbar)
             {
@@ -104,7 +105,12 @@ namespace LiteMonitor
 
             foreach (var col in cols)
             {
-                int colHeight = isTaskbarSingle ? _rowH : _rowH * 2;
+                int colHeight;
+                if (isTaskbarSingle || isHorizontalSingle)
+                    colHeight = _rowH;
+                else
+                    colHeight = _rowH * 2;
+                
                 col.Bounds = new Rectangle(x, padV, col.ColumnWidth, colHeight);
 
                 if (_mode == LayoutMode.Taskbar)
@@ -123,8 +129,18 @@ namespace LiteMonitor
                 else
                 {
                     // 横屏模式
-                    col.BoundsTop = new Rectangle(col.Bounds.X, col.Bounds.Y, col.Bounds.Width, _rowH);
-                    col.BoundsBottom = new Rectangle(col.Bounds.X, col.Bounds.Y + _rowH, col.Bounds.Width, _rowH);
+                    if (isHorizontalSingle)
+                    {
+                        // 单行模式：Top 居中显示，隐藏 Bottom
+                        col.BoundsTop = new Rectangle(col.Bounds.X, col.Bounds.Y, col.Bounds.Width, _rowH);
+                        col.BoundsBottom = Rectangle.Empty;
+                    }
+                    else
+                    {
+                        // 默认双行模式
+                        col.BoundsTop = new Rectangle(col.Bounds.X, col.Bounds.Y, col.Bounds.Width, _rowH);
+                        col.BoundsBottom = new Rectangle(col.Bounds.X, col.Bounds.Y + _rowH, col.Bounds.Width, _rowH);
+                    }
                 }
                 
                 // [补充修正] 如果是 NET.IP 混合列，我们需要告诉 Renderer 不要画 Label 区域，而是全宽显示
@@ -135,7 +151,7 @@ namespace LiteMonitor
                 x += col.ColumnWidth + gap;
             }
 
-            return padV * 2 + (isTaskbarSingle ? _rowH : _rowH * 2);
+            return padV * 2 + ((isTaskbarSingle || isHorizontalSingle) ? _rowH : _rowH * 2);
         }
 
         private int MeasureMetricItem(Graphics g, MetricItem item, Settings.TBStyle s)

@@ -108,27 +108,31 @@ namespace LiteMonitor.src.UI.SettingsPage
                 () => (Config.UIScale * 100) + "%",
                 s => Config.UIScale = MetricUtils.ParseDouble(s) / 100.0);
 
-            // 6. Spacing (Advanced)
-            var spacingControls = new System.Collections.Generic.List<Control>();
-            
-            var chkFollow = group.AddToggle(this, "Menu.HorizontalFollowsTaskbar", 
+            AddGroupToPage(group);
+
+            // --- Group: Horizontal Mode ---
+            var groupHorz = new LiteSettingsGroup(LanguageManager.T("Menu.Horizontal"));
+
+            // 1. Single Line
+            groupHorz.AddToggle(this, "Menu.TaskbarSingleLine",
+                () => Config.HorizontalSingleLine,
+                v => Config.HorizontalSingleLine = v);
+
+            // 2. Follow Taskbar
+            groupHorz.AddToggle(this, "Menu.HorizontalFollowsTaskbar", 
                 () => Config.HorizontalFollowsTaskbar, 
                 v => Config.HorizontalFollowsTaskbar = v);
-            
-            // Add custom spacing controls
-            // Combine language fields: Horizontal Mode - Item Spacing / Value Spacing
-            string titleItem = LanguageManager.T("Menu.Horizontal") + " - " + LanguageManager.T("Menu.TaskbarItemSpacing");
-            string titleInner = LanguageManager.T("Menu.Horizontal") + " - " + LanguageManager.T("Menu.TaskbarInnerSpacing");
 
-            spacingControls.Add(group.AddInt(this, titleItem, "px",
+            // 3. Spacing
+            groupHorz.AddInt(this, "Menu.TaskbarItemSpacing", "px",
                 () => Config.HorizontalItemSpacing,
-                v => Config.HorizontalItemSpacing = v));
-                
-            spacingControls.Add(group.AddInt(this, titleInner, "px",
+                v => Config.HorizontalItemSpacing = v);
+
+            groupHorz.AddInt(this, "Menu.TaskbarInnerSpacing", "px",
                 () => Config.HorizontalInnerSpacing,
-                v => Config.HorizontalInnerSpacing = v));
+                v => Config.HorizontalInnerSpacing = v);
             
-            AddGroupToPage(group);
+            AddGroupToPage(groupHorz);
         }
 
         private void CreateWebCard()
