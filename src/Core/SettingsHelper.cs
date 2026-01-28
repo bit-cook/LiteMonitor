@@ -188,7 +188,6 @@ namespace LiteMonitor
                 // [Cleanup] Remove Orphaned Items
                 // Optimization: Use StandardKeys whitelist to avoid heavy allocations
                 var whitelist = GetStandardKeys();
-                var validPluginIds = settings.PluginInstances.Select(p => p.Id).ToHashSet();
                 var keysToRemove = new List<MonitorItemConfig>();
 
                 foreach (var item in settings.MonitorItems)
@@ -206,6 +205,7 @@ namespace LiteMonitor
                     {
                         continue; // 保留所有 DASH.*
                     }
+                    keysToRemove.Add(item);
                 }
                 
                 foreach (var orphan in keysToRemove)
