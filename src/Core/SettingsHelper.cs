@@ -200,29 +200,11 @@ namespace LiteMonitor
                     // 1. Is it a standard item?
                     if (whitelist.Contains(item.Key)) continue;
 
-                    // 2. Is it a valid Plugin item? (DASH.{InstanceId}.{Key})
-                    bool isPluginItem = false;
-                    
-                    // Optimization: Check prefix and length before Split
-                    if (item.Key.StartsWith("DASH.", StringComparison.Ordinal) && item.Key.Length > 15) 
+                    // 2. Is it a valid Plugin item? 
+                    // [Safety] 只要是 DASH. 开头，一律保留，防止误删用户自定义的简单插件
+                    if (item.Key.StartsWith("DASH.", StringComparison.OrdinalIgnoreCase))
                     {
-                        // Format: DASH.{8-char-ID}.{Key}
-                        int firstDot = 4; 
-                        int secondDot = item.Key.IndexOf('.', 5);
-                        
-                        if (secondDot > firstDot)
-                        {
-                            string instId = item.Key.Substring(firstDot + 1, secondDot - firstDot - 1);
-                            if (validPluginIds.Contains(instId))
-                            {
-                                isPluginItem = true;
-                            }
-                        }
-                    }
-
-                    if (!isPluginItem)
-                    {
-                        keysToRemove.Add(item);
+                        continue; // 保留所有 DASH.*
                     }
                 }
                 
@@ -247,33 +229,41 @@ namespace LiteMonitor
 
         public static void RebuildAndMigrateSettings(this Settings settings)
         {
+            // 1. 获取最新版本的标准清单 (确保包含新版本增加的监控项)
             var temp = new Settings();
             temp.InitDefaultItems();
-            var standardItems = temp.MonitorItems;
+            var migratedList = temp.MonitorItems;
 
-            var migratedList = new List<MonitorItemConfig>();
-
-            foreach (var stdItem in standardItems)
+            // 2. 遍历新标准清单，回填用户的个性化设置
+            // 同时构建标准键集合，用于后续过滤
+            var standardKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            
+            foreach (var newItem in migratedList)
             {
-                var userOldItem = settings.MonitorItems.FirstOrDefault(x => x.Key.Equals(stdItem.Key, StringComparison.OrdinalIgnoreCase));
+                standardKeys.Add(newItem.Key);
 
-                if (userOldItem != null)
+                var oldItem = settings.MonitorItems.FirstOrDefault(x => x.Key.Equals(newItem.Key, StringComparison.OrdinalIgnoreCase));
+                if (oldItem != null)
                 {
-                    stdItem.VisibleInPanel = userOldItem.VisibleInPanel;
-                    stdItem.VisibleInTaskbar = userOldItem.VisibleInTaskbar;
-                    stdItem.UserLabel = userOldItem.UserLabel;
-                    stdItem.TaskbarLabel = userOldItem.TaskbarLabel;
-                    stdItem.UnitPanel = userOldItem.UnitPanel;
-                    stdItem.UnitTaskbar = userOldItem.UnitTaskbar;
+                    newItem.VisibleInPanel = oldItem.VisibleInPanel;
+                    newItem.VisibleInTaskbar = oldItem.VisibleInTaskbar;
+                    newItem.UserLabel = oldItem.UserLabel;
+                    newItem.TaskbarLabel = oldItem.TaskbarLabel;
+                    newItem.UnitPanel = oldItem.UnitPanel;
+                    newItem.UnitTaskbar = oldItem.UnitTaskbar;
                 }
-
-                if (stdItem.TaskbarSortIndex == 0) 
-                {
-                    stdItem.TaskbarSortIndex = stdItem.SortIndex;
-                }
-
-                migratedList.Add(stdItem);
+                // 数据修复：老版本没有 TaskbarSortIndex，默认初始化
+                if (newItem.TaskbarSortIndex == 0) newItem.TaskbarSortIndex = newItem.SortIndex;
             }
+
+            // 3. [Fix] 找回插件项：追加 DASH 开头且不在标准列表中的配置
+            // 必须过滤掉 DASH.HOST/DASH.Time 等标准项，否则会重复！
+            migratedList.AddRange(settings.MonitorItems
+                .Where(x => x.Key.StartsWith("DASH.", StringComparison.OrdinalIgnoreCase) && !standardKeys.Contains(x.Key))
+                .Select(x => { 
+                    if (x.TaskbarSortIndex == 0) x.TaskbarSortIndex = x.SortIndex; 
+                    return x; 
+                }));
 
             settings.MonitorItems = migratedList;
         }

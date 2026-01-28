@@ -2,6 +2,25 @@ namespace LiteMonitor.src.WebServer
 {
     public static class WebPageContent
     {
+        public static string GetAppIconBase64()
+        {
+            if (_cachedFaviconBase64 != null) return _cachedFaviconBase64;
+            try
+            {
+                using var icon = System.Drawing.Icon.ExtractAssociatedIcon(System.Windows.Forms.Application.ExecutablePath);
+                if (icon != null)
+                {
+                    using var ms = new System.IO.MemoryStream();
+                    icon.ToBitmap().Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                    _cachedFaviconBase64 = Convert.ToBase64String(ms.ToArray());
+                    return _cachedFaviconBase64;
+                }
+            }
+            catch { }
+            return ""; 
+        }
+        private static string _cachedFaviconBase64 = null;
+
         public const string IndexHtml = @"
 <!DOCTYPE html>
 <html lang='zh-CN'>

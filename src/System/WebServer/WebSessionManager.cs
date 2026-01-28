@@ -9,14 +9,13 @@ using System.Diagnostics;
 
 namespace LiteMonitor.src.WebServer
 {
-    public class WebSocketSessionManager
+    public class WebSessionManager
     {
         private readonly ConcurrentDictionary<TcpClient, bool> _wsClients = new();
-        // [Optimization] Use Action<Utf8JsonWriter> for zero-allocation JSON generation
         private readonly Action<Utf8JsonWriter> _dataProvider;
         private volatile bool _isRunning = false;
 
-        public WebSocketSessionManager(Action<Utf8JsonWriter> dataProvider)
+        public WebSessionManager(Action<Utf8JsonWriter> dataProvider)
         {
             _dataProvider = dataProvider;
         }
@@ -39,30 +38,127 @@ namespace LiteMonitor.src.WebServer
         }
 
         /// <summary>
-        /// 尝试处理 WebSocket 握手。如果成功，该连接将由 SessionManager 接管。
+        /// 统一处理客户端连接（自动识别 WebSocket 或 HTTP）
         /// </summary>
-        public bool TryHandleHandshake(TcpClient client, string requestStr)
+        public async Task HandleClientAsync(TcpClient client)
         {
+            byte[] buffer = null;
             try
             {
                 var stream = client.GetStream();
-                if (Handshake(stream, requestStr))
-                {
-                    // 握手成功，加入客户端列表
-                    _wsClients.TryAdd(client, true);
+                stream.ReadTimeout = 5000; // 防恶意连接
 
-                    // 启动接收循环以处理 Ping/Close 和排空缓冲区
-                    // 这里的 client 由 ReceiveLoop 负责在断开时关闭
-                    _ = Task.Run(() => ReceiveLoop(client));
-                    return true;
+                // 1. 读取请求头 (最多 8KB)
+                buffer = ArrayPool<byte>.Shared.Rent(8192);
+                int bytesRead = await ReadHeaderAsync(stream, buffer);
+                
+                if (bytesRead == 0) { client.Close(); return; }
+
+                string requestStr = Encoding.UTF8.GetString(buffer, 0, bytesRead);
+
+                // 2. 协议分流
+                if (IsWebSocketUpgrade(requestStr))
+                {
+                    if (Handshake(stream, requestStr))
+                    {
+                        _wsClients.TryAdd(client, true);
+                        await ReceiveLoop(client); // 进入 WS 循环
+                    }
+                }
+                else
+                {
+                    HandleHttpRequest(stream, requestStr);
+                    client.Close(); // HTTP 是短连接
                 }
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"WebSocket Handshake Failed: {ex.Message}");
+                Debug.WriteLine($"Client Error: {ex.Message}");
+                try { client.Close(); } catch { }
             }
-            return false;
+            finally
+            {
+                if (buffer != null) ArrayPool<byte>.Shared.Return(buffer);
+            }
         }
+
+        // --- 内部网络辅助方法 ---
+
+        private async Task<int> ReadHeaderAsync(NetworkStream stream, byte[] buffer)
+        {
+            int totalBytes = 0;
+            while (totalBytes < buffer.Length)
+            {
+                // 预留空间检查
+                if (totalBytes >= buffer.Length) break;
+
+                int read = await stream.ReadAsync(buffer, totalBytes, buffer.Length - totalBytes);
+                if (read == 0) break;
+                
+                totalBytes += read;
+                if (FindHeaderEnd(buffer, totalBytes) >= 0) return totalBytes;
+            }
+            return totalBytes;
+        }
+
+        private int FindHeaderEnd(byte[] buffer, int length)
+        {
+            for (int i = 0; i < length - 3; i++)
+            {
+                if (buffer[i] == 13 && buffer[i+1] == 10 && buffer[i+2] == 13 && buffer[i+3] == 10)
+                    return i + 4; // 返回包含结束符的长度
+            }
+            return -1;
+        }
+
+        private bool IsWebSocketUpgrade(string req)
+        {
+            return Regex.IsMatch(req, "GET", RegexOptions.IgnoreCase) && 
+                   Regex.IsMatch(req, "Upgrade: websocket", RegexOptions.IgnoreCase);
+        }
+
+        private void HandleHttpRequest(NetworkStream stream, string request)
+        {
+            string[] lines = request.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+            if (lines.Length == 0) return;
+            
+            string path = lines[0].Split(' ').Length > 1 ? lines[0].Split(' ')[1] : "/";
+            
+            if (path.StartsWith("/api/snapshot"))
+            {
+                using var ms = new MemoryStream();
+                using var writer = new Utf8JsonWriter(ms);
+                _dataProvider(writer);
+                writer.Flush();
+                SendHttpResponse(stream, 200, "application/json", ms.GetBuffer(), (int)ms.Length);
+            }
+            else if (path == "/favicon.ico")
+            {
+                SendHttpResponse(stream, 404, "text/html", Array.Empty<byte>(), 0);
+            }
+            else
+            {
+                // 默认返回首页
+                string iconBase64 = WebPageContent.GetAppIconBase64();
+                string html = WebPageContent.IndexHtml.Replace("{{FAVICON}}", 
+                    !string.IsNullOrEmpty(iconBase64) 
+                    ? $"<link rel='icon' type='image/png' href='data:image/png;base64,{iconBase64}'>" 
+                    : "");
+                
+                byte[] data = Encoding.UTF8.GetBytes(html);
+                SendHttpResponse(stream, 200, "text/html; charset=utf-8", data, data.Length);
+            }
+        }
+
+        private void SendHttpResponse(NetworkStream stream, int code, string type, byte[] body, int len)
+        {
+            string headers = $"HTTP/1.1 {code} OK\r\nContent-Type: {type}\r\nContent-Length: {len}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n";
+            byte[] hBytes = Encoding.UTF8.GetBytes(headers);
+            stream.Write(hBytes, 0, hBytes.Length);
+            if (len > 0) stream.Write(body, 0, len);
+        }
+
+        // --- WebSocket 核心逻辑 ---
 
         private async Task BroadcastLoop()
         {
@@ -78,9 +174,7 @@ namespace LiteMonitor.src.WebServer
                 byte[] buffer = null;
                 try
                 {
-                    // [Optimization] Rent a reasonable buffer size (8KB is usually enough for JSON)
-                    // If JSON exceeds 8KB, Utf8JsonWriter works best with IBufferWriter, but for simplicity with ArrayPool:
-                    // We'll stick to a fixed size that covers 99% cases. 32KB is safer if you have many plugins.
+
                     buffer = ArrayPool<byte>.Shared.Rent(32 * 1024); 
                     
                     int payloadLen;
@@ -92,27 +186,6 @@ namespace LiteMonitor.src.WebServer
                         payloadLen = (int)ms.Position;
                     }
 
-                    // [Optimization] Fast-Path: If no clients, return immediately (should be handled by IsEmpty check above)
-                    
-                    // Encode Header
-                    // We can reuse the same buffer logic or just create a small header buffer.
-                    // To minimize "Big Buffer" holding time during network IO, we should:
-                    // 1. Copy data to a perfectly-sized buffer for network transmission? 
-                    //    No, that allocates memory (creating new byte[]).
-                    // 2. Or just send from the large buffer? 
-                    //    If we send from large buffer, we hold it for the duration of network IO.
-                    //    If network is slow, ArrayPool will grow.
-                    
-                    // Best Balance: 
-                    // Since we already use `SendFrameSafeAsync` which does `stream.WriteAsync`, 
-                    // it copies data to kernel socket buffer quickly unless socket buffer is full.
-                    // But to avoid locking the 32KB buffer for slow clients, let's Copy to a specialized frame buffer
-                    // exactly sized to the payload.
-                    
-                    // Wait! Allocation of exact-sized buffer defeats the purpose of ArrayPool?
-                    // No. We use ArrayPool for the *scratchpad* (JSON generation).
-                    // For sending, if we want to release the scratchpad immediately:
-                    
                     int headerLen = 2;
                     if (payloadLen >= 65536) headerLen += 8;
                     else if (payloadLen >= 126) headerLen += 2;

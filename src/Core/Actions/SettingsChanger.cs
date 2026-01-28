@@ -52,13 +52,16 @@ namespace LiteMonitor.src.Core.Actions
                 }
                 if (p.Name == "PluginInstances")
                 {
-                    live.PluginInstances = new List<PluginInstanceConfig>(draft.PluginInstances);
+                    // 使用 JSON 序列化进行深拷贝，断开引用
+                    var json = System.Text.Json.JsonSerializer.Serialize(draft.PluginInstances);
+                    live.PluginInstances = System.Text.Json.JsonSerializer.Deserialize<List<PluginInstanceConfig>>(json) ?? new List<PluginInstanceConfig>();
                     continue;
                 }
                 if (p.Name == "Thresholds")
                 {
-                    // 阈值是简单对象，只要不需要部分合并，直接赋值即可
-                    live.Thresholds = draft.Thresholds; 
+                    // 阈值是 Class 类型 (ThresholdsSet)，必须深拷贝
+                    var json = System.Text.Json.JsonSerializer.Serialize(draft.Thresholds);
+                    live.Thresholds = System.Text.Json.JsonSerializer.Deserialize<ThresholdsSet>(json) ?? new ThresholdsSet();
                     continue;
                 }
                 // 3. 特殊处理字典类型
@@ -85,14 +88,32 @@ namespace LiteMonitor.src.Core.Actions
 
             target.HorizontalFollowsTaskbar = horizontalFollowsTaskbar;
 
+            // ★★★ 1. 深拷贝 Draft 列表，断开引用 ★★★
+            // 防止修改 Draft 属性时直接影响 Live 对象
+            var json = System.Text.Json.JsonSerializer.Serialize(workingList);
+            var safeWorkingList = System.Text.Json.JsonSerializer.Deserialize<List<MonitorItemConfig>>(json) 
+                                  ?? new List<MonitorItemConfig>();
+
+            // ★★★ 2. 恢复运行时状态 (Dynamic Labels) ★★★
+            // 因为 JSON 序列化丢失了 [JsonIgnore] 的属性，需要从 Live 对象中恢复它们
+            var liveMap = target.MonitorItems.ToDictionary(x => x.Key);
+            foreach (var item in safeWorkingList)
+            {
+                if (liveMap.TryGetValue(item.Key, out var liveItem))
+                {
+                    item.DynamicLabel = liveItem.DynamicLabel;
+                    item.DynamicTaskbarLabel = liveItem.DynamicTaskbarLabel;
+                }
+            }
+
             // 合并逻辑
             var activeKeys = new HashSet<string>(target.MonitorItems.Select(x => x.Key));
             
-            // 1. 获取配置中存在的项 (保留 UI 排序/更改)
-            var mergedList = workingList.Where(x => activeKeys.Contains(x.Key)).ToList();
+            // 3. 获取配置中存在的项 (保留 UI 排序/更改)
+            var mergedList = safeWorkingList.Where(x => activeKeys.Contains(x.Key)).ToList();
 
-            // 2. 添加配置中出现但工作列表中缺失的新项 
-            var workingKeys = new HashSet<string>(workingList.Select(x => x.Key));
+            // 4. 添加配置中出现但工作列表中缺失的新项 
+            var workingKeys = new HashSet<string>(safeWorkingList.Select(x => x.Key));
             var newItems = target.MonitorItems.Where(x => !workingKeys.Contains(x.Key)).ToList();
             
             if (newItems.Count > 0)
