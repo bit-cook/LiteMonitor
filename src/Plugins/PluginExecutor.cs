@@ -287,9 +287,11 @@ namespace LiteMonitor.src.Plugins
                         {
                              proxy = PluginProcessor.ResolveTemplate(proxy, context);
                         }
-
+                        // 1. 先解析 Header 中的占位符 (例如 Authorization: Bearer {{token}})
+                        var resolvedHeaders = ResolveHeaders(step.Headers, context);
+                        
                         // Request Coalescing
-                        var task = _inflightRequests.GetOrAdd(cacheKey, _ => FetchRawAsync(step.Method, url, body, step.Headers, step.ResponseEncoding, CancellationToken.None, proxy));
+                        var task = _inflightRequests.GetOrAdd(cacheKey, _ => FetchRawAsync(step.Method, url, body, resolvedHeaders, step.ResponseEncoding, CancellationToken.None, proxy));     
                         
                         try 
                         {
