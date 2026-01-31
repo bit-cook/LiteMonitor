@@ -3,7 +3,10 @@ using System.Drawing;
 using System.Linq;
 using System.Windows.Forms;
 using LiteMonitor.src.Core;
-using LiteMonitor; // TaskbarForm
+using LiteMonitor;
+using System.Diagnostics; // TaskbarForm
+using Debug = System.Diagnostics.Debug;
+
 
 namespace LiteMonitor.src.UI.Helpers
 {
@@ -26,10 +29,9 @@ namespace LiteMonitor.src.UI.Helpers
         private System.Windows.Forms.Timer? _pollingTimer;
         
         private bool _canShow = false;
+        private int _cachedTargetWidth = 0; // 缓存计算后的宽度
         private const int HOVER_DELAY_MS = 400; // 400ms 延迟
         private const int POLLING_INTERVAL_MS = 500; // 穿透模式下的检测频率
-        private const int TOOLTIP_BASE_WIDTH = 180; // 悬浮窗基准宽度
-
         public TaskbarTooltipHelper(Form targetForm, Settings cfg, UIController ui)
         {
             _targetForm = targetForm;
@@ -131,6 +133,7 @@ namespace LiteMonitor.src.UI.Helpers
         {
             _isHovering = true;
             _canShow = false; // 进入时不立即显示
+            _cachedTargetWidth = 0; // 重置宽度缓存，确保每次新悬停时重新测量
             
             _hoverTimer?.Stop();
             _hoverTimer?.Start(); // 开始计时
@@ -214,8 +217,9 @@ namespace LiteMonitor.src.UI.Helpers
             float scale = theme.Layout.LayoutScale;
             if (scale <= 0.1f) scale = 1.0f;
 
-            // 使用基准宽度并应用 DPI 缩放
-            int targetWidth = (int)(TOOLTIP_BASE_WIDTH * scale);
+            // 动态计算宽度：基于最长文本长度测量，不超过 220 * scale
+            // ★★★ 性能优化：只在显示时测量一次，并缓存结果 ★★★
+            int targetWidth = GetTargetWidth(groups, theme, scale);
             
             // 获取任务栏字体设置 (大字模式/自定义模式)
             bool isBold = _cfg.GetStyle().Bold;
@@ -233,6 +237,62 @@ namespace LiteMonitor.src.UI.Helpers
             // 注意：我们不在每一帧都 UpdatePosition，否则 ToolTip 会跟着鼠标微颤，
             // 除非我们想实现跟随鼠标的效果。这里保持位置固定直到下一次 MouseEnter
             // 或者：如果用户移动了鼠标，我们也不动，直到鼠标移出。
+        }
+
+        private int GetTargetWidth(System.Collections.Generic.List<GroupLayoutInfo> groups, Theme theme, float scale)
+        {
+            // 如果已有缓存宽度，直接使用 (避免每秒重复测量)
+            if (_cachedTargetWidth > 0)
+            {
+                return _cachedTargetWidth;
+            }
+
+            int maxPixelW = 0;
+            // 1. 找到 DASH 组 (插件大本营)
+            // 恢复业务逻辑：只针对 DASH 组进行动态宽度测量，避免其他组的长文本误触发宽模式
+            var dashGroup = groups.FirstOrDefault(g => g.GroupName.Equals("DASH", StringComparison.OrdinalIgnoreCase));
+
+            if (dashGroup != null)
+            {
+                // 优化：在循环外创建 Font 对象，并在使用完毕后释放
+                using (var font = new Font(theme.FontItem.FontFamily.Name, Math.Max(8f, theme.FontItem.Size - 0.5f)))
+                {
+                    foreach (var it in dashGroup.Items) 
+                    {
+                        // 排除特定的系统监控项 (保持原有筛选条件)
+                        if (it.Key.IndexOf("DASH.IP", StringComparison.OrdinalIgnoreCase) >= 0||
+                            it.Key.IndexOf("DASH.HOST", StringComparison.OrdinalIgnoreCase) >= 0||
+                            it.Key.IndexOf("DASH.Time", StringComparison.OrdinalIgnoreCase) >= 0||
+                            it.Key.IndexOf("DASH.Uptime", StringComparison.OrdinalIgnoreCase) >= 0) continue;
+
+                        string txt = (it.Label ?? it.Key) + it.GetFormattedText(false);
+                        
+                        // 只有当最长项超过 14 个字时，才进行 GDI+ 测量
+                        if (txt.Length > 14)
+                        {
+                            int w = TextRenderer.MeasureText(txt, font, Size.Empty, TextFormatFlags.NoPadding).Width;
+                            if (w > maxPixelW) maxPixelW = w;
+                            // Debug.Write($"[DASH] Text: {txt}, Length: {txt.Length} w={w} \n");
+                        }
+                    }
+                }
+            }
+
+            // 计算最终宽度：默认160 (逻辑单位) -> 转换为物理像素
+            int minWidthPx = (int)(160 * scale);
+            int paddingPx = (int)(40 * scale);
+            
+            int targetWidth = minWidthPx;
+
+            // 只有内容撑开了宽度才应用 (maxPixelW 是物理像素，直接相加)
+            if (maxPixelW + paddingPx > targetWidth) 
+            {
+                targetWidth = maxPixelW + paddingPx;
+            }
+            
+            _cachedTargetWidth = targetWidth; // 存入缓存
+            
+            return targetWidth;
         }
 
         public void Dispose()
