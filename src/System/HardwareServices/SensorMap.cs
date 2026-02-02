@@ -130,29 +130,17 @@ namespace LiteMonitor.src.SystemServices
                     }
                 }
 
-                // --- 填充 GPU 缓存 (优化版：智能选择独显) ---
+                // --- 填充 GPU 缓存 (优化版：完全依赖优先级排序) ---
                 if (hw.HardwareType == HardwareType.GpuNvidia || 
                     hw.HardwareType == HardwareType.GpuAmd || 
                     hw.HardwareType == HardwareType.GpuIntel)
                 {
-                    // 如果还没找到显卡，直接用当前这个
+                    // 因为外层循环已经按照 GetHwPriority 排序（强力显卡在前），
+                    // 所以第一个遇到的显卡就是最强的，直接锁定即可。
+                    // 移除了复杂的“后来者居上”判断逻辑，避免过度设计。
                     if (newGpu == null)
                     {
                         newGpu = hw;
-                    }
-                    else
-                    {
-                        // 如果已经找到了一个显卡，但它是“弱鸡”核显，而当前这个是“强力”独显，则替换！
-                        bool oldIsGeneric = IsGenericGpuName(newGpu.Name);
-                        bool newIsSpecific = !IsGenericGpuName(hw.Name);
-                        bool newIsArc = hw.Name.Contains("Arc", StringComparison.OrdinalIgnoreCase);
-                        bool oldIsArc = newGpu.Name.Contains("Arc", StringComparison.OrdinalIgnoreCase);
-
-                        // 优先选 Arc，其次选非通用名称的卡
-                        if ((!oldIsArc && newIsArc) || (oldIsGeneric && newIsSpecific))
-                        {
-                            newGpu = hw;
-                        }
                     }
                     
                     // ★★★ [新增] GPU 风扇映射 ★★★
@@ -174,16 +162,47 @@ namespace LiteMonitor.src.SystemServices
                 // --- 普通传感器映射 ---
                 foreach (var s in hw.Sensors)
                 {
-                    string? key = NormalizeKey(hw, s); // 调用 Logic 文件中的方法
-                    if (!string.IsNullOrEmpty(key) && !newMap.ContainsKey(key))
-                        newMap[key] = s;
+                    string? key = SensorMatcher.Match(hw, s); // 调用 SensorMatcher 进行识别
+                    if (!string.IsNullOrEmpty(key))
+                    {
+                        if (!newMap.ContainsKey(key))
+                        {
+                            newMap[key] = s;
+                        }
+                        else
+                        {
+                            // [Fix] 冲突解决策略：优先选择 Vendor (非 D3D) 传感器
+                            // 必须严格保护高优先级显卡的数据，防止被低优先级显卡覆盖！
+                            var existing = newMap[key];
+                            
+                            // 1. 如果现有数据来自"更强"的显卡 (Priority数值更小)，绝对禁止覆盖！
+                            // (注意：RegisterTo 按照 0->100 顺序遍历，所以 existing 的优先级只可能 <= 当前 hw 的优先级)
+                            // 如果 existing < hw，说明它是更强的显卡写入的，直接跳过。
+                            if (HardwareRules.GetHwPriority(existing.Hardware) < HardwareRules.GetHwPriority(hw))
+                            {
+                                continue;
+                            }
+
+                            // 2. 如果优先级相同 (通常是同一张显卡的不同传感器，或者是两张同样的显卡)，
+                            // 则应用 D3D vs Vendor 优选逻辑。
+                            bool existingIsD3D = existing.Name.Contains("D3D", StringComparison.OrdinalIgnoreCase);
+                            bool newIsD3D = s.Name.Contains("D3D", StringComparison.OrdinalIgnoreCase);
+                            
+                            // 如果现有的是 D3D 而新来的不是 D3D -> 替换为新来的 (Upgrade)
+                            if (existingIsD3D && !newIsD3D)
+                            {
+                                newMap[key] = s;
+                            }
+                            // 其他情况 (Vendor vs Vendor, Vendor vs D3D) -> 保持现有 (First Wins / Vendor Wins)
+                        }
+                    }
                 }
 
                 foreach (var sub in hw.SubHardware) RegisterTo(sub);
             }
 
             // 按优先级排序并注册
-            var ordered = computer.Hardware.OrderBy(h => GetHwPriority(h));
+            var ordered = computer.Hardware.OrderBy(h => HardwareRules.GetHwPriority(h));
             foreach (var hw in ordered) RegisterTo(hw);
             
             // ============================================
@@ -260,151 +279,7 @@ namespace LiteMonitor.src.SystemServices
             }
         }
 
-        // ===========================================================
-        // [重要] 传感器名称标准化映射 (原 Logic.cs 中的 NormalizeKey)
-        // ===========================================================
-        private string? NormalizeKey(IHardware hw, ISensor s)
-        {
-            string name = s.Name;
-            var type = hw.HardwareType;
-
-            // --- CPU ---
-            if (type == HardwareType.Cpu)
-            {
-                // 新代码：增加 "package" 支持，防止某些 CPU 把总负载叫 "CPU Package"
-                if (s.SensorType == SensorType.Load)
-                {
-                    if (Has(name, "total") || Has(name, "package")) 
-                        return "CPU.Load";
-                }
-                // [深度优化后的温度匹配逻辑]
-                if (s.SensorType == SensorType.Temperature)
-                {
-                    // 1. 黄金标准：包含这些词的通常就是我们要的
-                    if (Has(name, "package") ||  // Intel/AMD 标准
-                        Has(name, "average") ||  // LHM 聚合数据
-                        Has(name, "tctl") ||     // AMD 风扇控制温度 (最准)
-                        Has(name, "tdie") ||     // AMD 核心硅片温度
-                        Has(name, "ccd") ||       // AMD 核心板
-                        Has(name, "cores"))     // 通用核心温度
-                    {
-                        return "CPU.Temp";
-                    }
-
-                    // 2. 银牌标准：通用名称兜底 (修复 AMD 7840HS 等移动端 CPU)
-                    // 必须严格排除干扰项 (如 SOC, VRM, Pump 等)
-                    if ((Has(name, "cpu") || Has(name, "core")) && 
-                        !Has(name, "soc") &&     // 排除核显/片上系统
-                        !Has(name, "vrm") &&     // 排除供电
-                        !Has(name, "fan") &&     // 排除风扇(虽类型不同，但防名字干扰)
-                        !Has(name, "pump") &&    // 排除水泵
-                        !Has(name, "liquid") &&  // 排除水冷液
-                        !Has(name, "coolant") && // 排除冷却液
-                        !Has(name, "distance"))  // 排除 "Distance to TjMax"
-                    {
-                        return "CPU.Temp";
-                    }
-                }
-                if (s.SensorType == SensorType.Power && (Has(name, "package") || Has(name, "cores"))) return "CPU.Power";
-                // [New] CPU Voltage
-                if (s.SensorType == SensorType.Voltage && (Has(name, "core") || Has(name, "cpu") || Has(name, "vcore") || Has(name, "vid"))) 
-                {
-                    // Exclude distractions
-                    if (!Has(name, "soc") && !Has(name, "gt") && !Has(name, "sa") && !Has(name, "aux")) 
-                        return "CPU.Voltage";
-                }
-            }
-
-            // --- GPU ---
-            if (type is HardwareType.GpuNvidia or HardwareType.GpuAmd or HardwareType.GpuIntel)
-            {
-                if (s.SensorType == SensorType.Load && (Has(name, "core") || Has(name, "d3d 3d"))) return "GPU.Load";
-                if (s.SensorType == SensorType.Temperature && (Has(name, "core") || Has(name, "hot spot") || Has(name, "soc") || Has(name, "vr"))) return "GPU.Temp";
-                
-                // VRAM
-                if (s.SensorType == SensorType.SmallData && (Has(name, "memory") || Has(name, "dedicated")))
-                {
-                    if (Has(name, "used")) return "GPU.VRAM.Used";
-                    if (Has(name, "total")) return "GPU.VRAM.Total";
-                }
-                if (s.SensorType == SensorType.Load && Has(name, "memory")) return "GPU.VRAM.Load";
-            }
-
-            // --- Memory ---
-            if (type == HardwareType.Memory) 
-            {
-                if (Has(hw.Name, "virtual")) return null;
-                // 1. 负载 (保持不变)
-                if (s.SensorType == SensorType.Load && Has(name, "memory")) return "MEM.Load";
-                
-                // 2. ★ 增强版匹配：同时接受 Data 和 SmallData
-                if (s.SensorType == SensorType.Data || s.SensorType == SensorType.SmallData)
-                {
-                    if (Has(name, "used")) return "MEM.Used";
-                    if (Has(name, "available")) return "MEM.Available";
-                }
-            }
-
-            // --- Battery ---
-            if (type == HardwareType.Battery)
-            {
-                if (s.SensorType == SensorType.Level)
-                {
-                    // Fix: 过滤掉电池损耗/健康度数据 (通常也标记为 Level 类型)
-                    // 用户反馈 #199: Battery level shows Degradation level
-                    if (Has(name, "Degradation") || Has(name, "Wear")) return null;
-                    
-                    // ★★★ 优先选择包含 "Charge" 的传感器 ★★★
-                    if (Has(name, "Charge")) return "BAT.Percent";
-                    
-                    // 其他作为备选 (Weak)
-                    return "BAT.Percent";
-                }
-                if (s.SensorType == SensorType.Power)
-                {
-                    // ★★★ [Simplified] 移除基于充电状态的硬过滤，防止在特殊状态(如充满插电)下找不到传感器导致数据卡死 ★★★
-                    // 无论当前是充电还是放电，只要是 Power 类型的电池传感器，都进行映射。
-                    // 具体的数值正负号和归零逻辑交由 BatteryService 处理。
-                    return "BAT.Power";
-                }
-                if (s.SensorType == SensorType.Voltage) return "BAT.Voltage";
-                if (s.SensorType == SensorType.Current) return "BAT.Current";
-            }
-
-            return null;
-        }
-
-        // 公共辅助方法 - 优化字符串比较，减少内存分配
-        public static bool Has(string source, string sub)
-        {
-            if (string.IsNullOrEmpty(source) || string.IsNullOrEmpty(sub)) return false;
-            return source.AsSpan().Contains(sub.AsSpan(), StringComparison.OrdinalIgnoreCase); // 使用Span避免内存分配
-        }
-
-        private bool IsGenericGpuName(string name)
-        {
-            if (string.IsNullOrWhiteSpace(name)) return true;
-            // 常见核显名称: "AMD Radeon(TM) Graphics", "Intel(R) UHD Graphics"
-            if (name.Equals("AMD Radeon(TM) Graphics", StringComparison.OrdinalIgnoreCase)) return true;
-            if (name.Contains("UHD Graphics", StringComparison.OrdinalIgnoreCase)) return true;
-            if (name.Contains("Iris", StringComparison.OrdinalIgnoreCase)) return true;
-            return false;
-        }
-
-        private int GetHwPriority(IHardware hw)
-        {
-            // 如果是 Intel Arc，提到最高优先级
-            if (hw.HardwareType == HardwareType.GpuIntel && 
-                hw.Name.Contains("Arc", StringComparison.OrdinalIgnoreCase))
-                return 0;
-
-            return hw.HardwareType switch
-            {
-                HardwareType.GpuNvidia => 0,
-                HardwareType.GpuAmd => 1,
-                HardwareType.GpuIntel => 2,
-                _ => 3
-            };
-        }
+        // 复用 HardwareRules 的字符串匹配，避免重复造轮子
+        public static bool Has(string source, string sub) => HardwareRules.Has(source, sub);
     }
 }
