@@ -62,7 +62,13 @@ namespace LiteMonitor.src.SystemServices
                     // 注意：CategoryName 即使在中文系统通常也支持英文，为了兼容性优先用英文
                     
                     // CPU 负载：使用 Processor Information 类别 (Win8+ 推荐)，兼容性更好
-                    _cpuLoadCounter = CreateCounter("Processor Information", "% Processor Time", "_Total");
+                    // [Fix] 使用 "% Processor Utility" 而非 "% Processor Time"
+                    // 任务管理器在 Win8+ 显示的是 "Utility" (考虑睿频)，而非 "Time"
+                    _cpuLoadCounter = CreateCounter("Processor Information", "% Processor Utility", "_Total");
+
+                    if (_cpuLoadCounter == null)
+                        _cpuLoadCounter = CreateCounter("Processor Information", "% Processor Time", "_Total"); // 回退1
+
                     if (_cpuLoadCounter == null) 
                         _cpuLoadCounter = CreateCounter("Processor", "% Processor Time", "_Total"); // 旧系统回退
 
@@ -175,7 +181,12 @@ namespace LiteMonitor.src.SystemServices
         // 安全取值方法 (内部消化异常，失败返回 null)
         // ==========================================
 
-        public float? GetCpuLoad() => SafeRead(_cpuLoadCounter);
+        public float? GetCpuLoad()
+        {
+            var val = SafeRead(_cpuLoadCounter);
+            // [Fix] Utility 计数器在睿频时可能超过 100%，需截断以匹配任务管理器行为
+            return val > 100f ? 100f : val;
+        }
 
         public float? GetCpuFreq()
         {
