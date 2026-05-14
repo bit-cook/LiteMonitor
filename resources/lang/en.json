@@ -221,6 +221,7 @@
     "HardwareSettings": "Source",
     "DiskSource": "Disk",
     "NetworkSource": "Network",
+    "GpuSource": "GPU",
     "Auto": "Auto",
     "UseWinPerCounters": "Use Sys Counters",
     "UseWinPerCountersTip": "⚠️Disable if inaccurate. CPU/GPU/MEM/DISK read from sensors.",

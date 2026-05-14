@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.Json; // 如果报错，请引用 System.Text.Json NuGet包，或改用 Newtonsoft
@@ -23,10 +24,13 @@ namespace LiteMonitor.src.Core
     public static class TrafficLogger
     {
         private static readonly string _filePath = Path.Combine(AppContext.BaseDirectory, "TrafficHistory.json");
+        private static readonly string _backupPath = Path.Combine(AppContext.BaseDirectory, "TrafficHistory.json.bak");
+        private static readonly string _tempPath = Path.Combine(AppContext.BaseDirectory, "TrafficHistory.json.tmp");
         private static readonly object _ioLock = new object(); // 文件锁
+        private static readonly object _dataLock = new object(); // 数据锁
         // ====== 新增缓存字段 ======
         private static DateTime _cachedDate;
-        private static string _cachedDateKey;
+        private static string _cachedDateKey = "";
 
         public static TrafficData Data { get; private set; } = new TrafficData();
 
@@ -35,17 +39,118 @@ namespace LiteMonitor.src.Core
         {
             lock (_ioLock)
             {
+                TrafficData loaded = TryLoadFile(_filePath) ?? TryLoadFile(_backupPath) ?? new TrafficData();
+                loaded.History ??= new Dictionary<string, DailyRecord>();
+                lock (_dataLock)
+                {
+                    Data = loaded;
+                }
+            }
+        }
+
+        private static TrafficData? TryLoadFile(string path)
+        {
+            try
+            {
+                if (!File.Exists(path)) return null;
+
+                string json = File.ReadAllText(path);
+                return JsonSerializer.Deserialize<TrafficData>(json) ?? new TrafficData();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[TrafficLogger] 读取历史流量失败: {path}, {ex.Message}");
+                return null;
+            }
+        }
+
+        private static TrafficData CloneDataUnsafe()
+        {
+            Data.History ??= new Dictionary<string, DailyRecord>();
+            return new TrafficData
+            {
+                History = Data.History.ToDictionary(
+                    kv => kv.Key,
+                    kv => new DailyRecord
+                    {
+                        Upload = kv.Value?.Upload ?? 0,
+                        Download = kv.Value?.Download ?? 0
+                    })
+            };
+        }
+
+        private static void AtomicWrite(string json)
+        {
+            string? dir = Path.GetDirectoryName(_filePath);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+                Directory.CreateDirectory(dir);
+
+            File.WriteAllText(_tempPath, json);
+
+            if (File.Exists(_filePath))
+            {
+                try { File.Copy(_filePath, _backupPath, true); }
+                catch (Exception ex) { Debug.WriteLine($"[TrafficLogger] 写入备份失败: {ex.Message}"); }
+            }
+
+            File.Move(_tempPath, _filePath, true);
+        }
+
+        private static void CleanupTempFile()
+        {
+            try
+            {
+                if (File.Exists(_tempPath)) File.Delete(_tempPath);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[TrafficLogger] 清理临时文件失败: {ex.Message}");
+            }
+        }
+
+        private static string SerializeSnapshot()
+        {
+            var opt = new JsonSerializerOptions { WriteIndented = true };
+            lock (_dataLock)
+            {
+                return JsonSerializer.Serialize(CloneDataUnsafe(), opt);
+            }
+        }
+
+        private static DailyRecord GetOrCreateTodayRecordUnsafe(string key)
+        {
+            Data.History ??= new Dictionary<string, DailyRecord>();
+            if (!Data.History.TryGetValue(key, out var record) || record == null)
+            {
+                record = new DailyRecord();
+                Data.History[key] = record;
+            }
+            return record;
+        }
+
+        private static string GetTodayKey()
+        {
+            if (DateTime.Today != _cachedDate)
+            {
+                _cachedDate = DateTime.Today;
+                _cachedDateKey = UIUtils.Intern(_cachedDate.ToString("yyyy-MM-dd"));
+            }
+            return _cachedDateKey;
+        }
+
+        private static void SaveInternal()
+        {
+            lock (_ioLock)
+            {
                 try
                 {
-                    if (File.Exists(_filePath))
-                    {
-                        string json = File.ReadAllText(_filePath);
-                        Data = JsonSerializer.Deserialize<TrafficData>(json) ?? new TrafficData();
-                    }
+                    string json = SerializeSnapshot();
+                    AtomicWrite(json);
                 }
-                catch 
-                { 
-                    Data = new TrafficData(); 
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[TrafficLogger] 保存历史流量失败: {ex.Message}");
+                    CleanupTempFile();
                 }
             }
         }
@@ -53,57 +158,29 @@ namespace LiteMonitor.src.Core
         // 关闭时保存
         public static void Save()
         {
-            lock (_ioLock)
-            {
-                try
-                {
-                    var opt = new JsonSerializerOptions { WriteIndented = true };
-                    string json = JsonSerializer.Serialize(Data, opt);
-                    File.WriteAllText(_filePath, json);
-                }
-                catch { }
-            }
+            SaveInternal();
         }
 
         // 核心：累加数据
         public static void AddTraffic(long upBytes, long downBytes)
         {
-            // 优化：只有日期变更时才重新 Format 和 Intern
-            if (DateTime.Today != _cachedDate)
-            {
-                _cachedDate = DateTime.Today;
-                // 此时才调用 ToString 和 Intern
-                _cachedDateKey = UIUtils.Intern(_cachedDate.ToString("yyyy-MM-dd"));
-            }
-            
-            // 使用缓存的 Key
-            string key = _cachedDateKey;
+            string key = GetTodayKey();
 
-            // 线程安全注意：虽然 UI 读取和 Update 写入可能并发，但 Dictionary 非线程安全。
-            // 考虑到冲突概率极低（UI 只读，Update 只写），暂不加重锁，或者简单加锁：
-            lock (Data) 
+            lock (_dataLock)
             {
-                if (!Data.History.ContainsKey(key))
-                {
-                    Data.History[key] = new DailyRecord();
-                }
-
-                Data.History[key].Upload += upBytes;
-                Data.History[key].Download += downBytes;
+                var record = GetOrCreateTodayRecordUnsafe(key);
+                record.Upload += upBytes;
+                record.Download += downBytes;
             }
         }
 
         // 获取今日数据 (供 UI 显示)
         public static (long up, long down) GetTodayStats()
         {
-            if (DateTime.Today != _cachedDate)
+            string key = GetTodayKey();
+            lock (_dataLock)
             {
-                _cachedDate = DateTime.Today;
-                _cachedDateKey = UIUtils.Intern(_cachedDate.ToString("yyyy-MM-dd"));
-            }
-            string key = _cachedDateKey;
-            lock (Data)
-            {
+                Data.History ??= new Dictionary<string, DailyRecord>();
                 if (Data.History.TryGetValue(key, out var rec))
                 {
                     return (rec.Upload, rec.Download);
@@ -115,23 +192,25 @@ namespace LiteMonitor.src.Core
         // [新增] 删除指定日期的记录
         public static void RemoveRecord(string dateKey)
         {
-            lock (_ioLock)
+            bool changed;
+            lock (_dataLock)
             {
-                if (Data.History.Remove(dateKey))
-                {
-                    Save(); // 立即保存更改
-                }
+                Data.History ??= new Dictionary<string, DailyRecord>();
+                changed = Data.History.Remove(dateKey);
             }
+
+            if (changed) Save(); // 立即保存更改
         }
 
         // [新增] 清空所有历史
         public static void ClearHistory()
         {
-            lock (_ioLock)
+            lock (_dataLock)
             {
+                Data.History ??= new Dictionary<string, DailyRecord>();
                 Data.History.Clear();
-                Save();
             }
+            Save();
         }
     }
 }

@@ -527,22 +527,32 @@ namespace LiteMonitor.src.UI.Controls
              Inner.ValueMember = "Value";
         }
         
-        public void SelectValue(string value)
+        public bool SelectValue(string value)
         {
              for(int i=0; i<Inner.Items.Count; i++)
              {
                  if (Inner.Items[i] is LiteComboItem item && item.Value == value)
                  {
                      Inner.SelectedIndex = i;
-                     return;
+                     return true;
+                 }
+             }
+             for(int i=0; i<Inner.Items.Count; i++)
+             {
+                 if (Inner.Items[i] is LiteComboItem item &&
+                     string.Equals(item.Text, value, StringComparison.OrdinalIgnoreCase))
+                 {
+                     Inner.SelectedIndex = i;
+                     return true;
                  }
              }
              if (Inner.Items.Count > 0) Inner.SelectedIndex = 0;
+             return false;
         }
 
         public string SelectedValue 
         {
-            get => (Inner.SelectedItem as LiteComboItem)?.Value;
+            get => (Inner.SelectedItem as LiteComboItem)?.Value ?? "";
         }
     }
     public class LiteLink : Label

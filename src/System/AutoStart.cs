@@ -29,6 +29,8 @@ namespace LiteMonitor.src.SystemServices
 
             if (enabled)
             {
+                if (IsEnabledForCurrentExe(exePath)) return;
+
                 // 使用 XML 方案，这是唯一能同时满足 [不报PowerShell错误] + [实现电池启动] 的方案
                 string tempXmlPath = Path.Combine(Path.GetTempPath(), $"LiteMonitor_Task_{Guid.NewGuid()}.xml");
 
@@ -108,6 +110,45 @@ namespace LiteMonitor.src.SystemServices
                 }
             }
             catch { return false; }
+        }
+
+        private static bool IsEnabledForCurrentExe(string exePath)
+        {
+            try
+            {
+                var psi = new ProcessStartInfo("schtasks", $"/Query /TN \"{TaskName}\" /XML")
+                {
+                    CreateNoWindow = true,
+                    UseShellExecute = false,
+                    RedirectStandardOutput = true
+                };
+
+                using (var p = Process.Start(psi))
+                {
+                    if (p == null) return false;
+
+                    string xml = p.StandardOutput.ReadToEnd();
+                    p.WaitForExit();
+                    if (p.ExitCode != 0 || string.IsNullOrWhiteSpace(xml)) return false;
+
+                    var doc = XDocument.Parse(xml);
+                    var command = doc.Descendants()
+                        .FirstOrDefault(x => x.Name.LocalName == "Command")
+                        ?.Value;
+                    var enabled = doc.Descendants()
+                        .FirstOrDefault(x => x.Name.LocalName == "Enabled" &&
+                                             x.Parent?.Name.LocalName == "Settings")
+                        ?.Value;
+
+                    // 如果任务被用户或系统禁用，即使命令路径一致，也不能跳过重建/启用。
+                    bool taskEnabled = !string.Equals(enabled, "false", StringComparison.OrdinalIgnoreCase);
+                    return taskEnabled && string.Equals(command, exePath, StringComparison.OrdinalIgnoreCase);
+                }
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         /// <summary>

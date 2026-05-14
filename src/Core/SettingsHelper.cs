@@ -218,6 +218,7 @@ namespace LiteMonitor
             settings.LastAutoDisk = UIUtils.Intern(settings.LastAutoDisk);
             settings.PreferredNetwork = UIUtils.Intern(settings.PreferredNetwork);
             settings.LastAutoNetwork = UIUtils.Intern(settings.LastAutoNetwork);
+            settings.PreferredGpu = UIUtils.Intern(settings.PreferredGpu);
             
             settings.PreferredCpuFan = UIUtils.Intern(settings.PreferredCpuFan);
             settings.PreferredCpuPump = UIUtils.Intern(settings.PreferredCpuPump);

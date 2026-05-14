@@ -36,6 +36,7 @@ namespace LiteMonitor.src.SystemServices
         private string _lastPrefMoboTemp = "";
         private string _lastPrefDisk = "";
         private string _lastPrefNet = "";
+        private string _lastPrefGpu = "";
         
         public HardwareValueProvider(Computer c, Settings s, SensorMap map, NetworkManager net, DiskManager disk, FpsCounter fpsCounter,PerformanceCounterManager perfManager, object syncLock, Dictionary<string, float> lastValid)
         {
@@ -65,6 +66,7 @@ namespace LiteMonitor.src.SystemServices
             _lastPrefMoboTemp = _cfg.PreferredMoboTemp;
             _lastPrefDisk = _cfg.PreferredDisk;
             _lastPrefNet = _cfg.PreferredNetwork;
+            _lastPrefGpu = _cfg.PreferredGpu ?? "";
 
             // 1. 预查找用户指定的首选传感器 (风扇、水泵、主板温度)
             string[] preferredKeys = { "CPU.Fan", "CPU.Pump", "CASE.Fan", "MOBO.Temp" };
@@ -188,8 +190,15 @@ namespace LiteMonitor.src.SystemServices
             {
                 _tickCache.Clear();
 
-                // 自动检测配置变更：如果用户更改了首选风扇/磁盘，立即自动预热
-                if (_lastPrefCpuFan != _cfg.PreferredCpuFan ||
+                bool gpuChanged = _lastPrefGpu != (_cfg.PreferredGpu ?? "");
+                if (gpuChanged)
+                {
+                    _sensorMap.Rebuild(_computer, _cfg);
+                }
+
+                // 自动检测配置变更：如果用户更改了首选风扇/磁盘/显卡，立即自动预热
+                if (gpuChanged ||
+                    _lastPrefCpuFan != _cfg.PreferredCpuFan ||
                     _lastPrefCpuPump != _cfg.PreferredCpuPump ||
                     _lastPrefCaseFan != _cfg.PreferredCaseFan ||
                     _lastPrefMoboTemp != _cfg.PreferredMoboTemp ||
@@ -205,6 +214,45 @@ namespace LiteMonitor.src.SystemServices
         // ===========================================================
         // ===================== 公共取值入口 =========================
         // ===========================================================
+        public float? GetStartupValue(string key)
+        {
+            if (_lastValidMap.TryGetValue(key, out float lastVal)) return lastVal;
+
+            bool useCounter = _cfg.UseWinPerCounters && _perfManager.IsInitialized;
+            if (!useCounter) return null;
+
+            if (key == "CPU.Load")
+            {
+                var cpuLoad = _perfManager.GetCpuLoad();
+                return cpuLoad.HasValue ? Math.Clamp(cpuLoad.Value, 0f, 100f) : null;
+            }
+
+            if (key == "CPU.Clock")
+            {
+                return _perfManager.GetCpuFreq();
+            }
+
+            if (key == "MEM.Load")
+            {
+                var memData = _perfManager.GetMemoryData();
+                if (memData.Load.HasValue && Settings.DetectedRamTotalGB <= 0 && _perfManager.TotalMemoryGB > 0.1f)
+                {
+                    Settings.DetectedRamTotalGB = _perfManager.TotalMemoryGB;
+                }
+                return memData.Load;
+            }
+
+            if (key == "DISK.Read") return _perfManager.GetDiskRead();
+            if (key == "DISK.Write") return _perfManager.GetDiskWrite();
+            if (key == "DISK.Activity")
+            {
+                var diskActive = _perfManager.GetDiskActive();
+                return diskActive.HasValue ? Math.Clamp(diskActive.Value, 0f, 100f) : null;
+            }
+
+            return null;
+        }
+
         public float? GetValue(string key)
         {
             // ★★★ [优化] 使用 TryEnter 避免 UI 线程因后台重载而卡死 ★★★

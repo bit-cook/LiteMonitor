@@ -25,6 +25,7 @@ namespace LiteMonitor.src.UI.Helpers
 
         // 自动隐藏相关
         private System.Windows.Forms.Timer? _autoHideTimer;
+        private System.Windows.Forms.Timer? _topMostTimer;
         private bool _isHidden = false;
         private readonly int _hideWidth = 4;
         private readonly int _hideThreshold = 10;
@@ -48,6 +49,7 @@ namespace LiteMonitor.src.UI.Helpers
         {
             InitTray();
             if (_cfg.AutoHide) StartTimer();
+            StartTopMostTimer();
         }
 
         // =================================================================
@@ -77,6 +79,31 @@ namespace LiteMonitor.src.UI.Helpers
         }
 
         private void AutoHideTick(object? sender, EventArgs e) => CheckAutoHide();
+
+        private void StartTopMostTimer()
+        {
+            _topMostTimer ??= new System.Windows.Forms.Timer { Interval = 10000 };
+            _topMostTimer.Tick -= TopMostTick;
+            _topMostTimer.Tick += TopMostTick;
+            _topMostTimer.Start();
+        }
+
+        private void TopMostTick(object? sender, EventArgs e)
+        {
+            if (!_form.Visible) return;
+
+            if (_cfg.TopMost)
+            {
+                if (!_winHelper.IsTopMostStyleApplied())
+                {
+                    _winHelper.RefreshTopMost(true, forceReinsert: true);
+                }
+            }
+            else if (_winHelper.IsTopMostStyleApplied())
+            {
+                _winHelper.RefreshTopMost(false);
+            }
+        }
 
         private void CheckAutoHide()
         {
@@ -353,6 +380,8 @@ namespace LiteMonitor.src.UI.Helpers
             _tray.Dispose();
             _autoHideTimer?.Stop();
             _autoHideTimer?.Dispose();
+            _topMostTimer?.Stop();
+            _topMostTimer?.Dispose();
         }
     }
 }

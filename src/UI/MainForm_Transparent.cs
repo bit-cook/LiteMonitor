@@ -34,6 +34,10 @@ namespace LiteMonitor
                 var cp = base.CreateParams;
                 cp.ExStyle |= 0x80; // WS_EX_TOOLWINDOW
                 cp.ExStyle &= ~0x00040000; // WS_EX_APPWINDOW
+                if (_cfg != null && _cfg.TopMost)
+                {
+                    cp.ExStyle |= 0x00000008; // WS_EX_TOPMOST，防止句柄重建后丢失置顶样式
+                }
                 
                 // [Fix] 启动时应用鼠标穿透配置，防止因句柄重建导致样式丢失
                 if (_cfg != null && _cfg.ClickThrough)
@@ -59,6 +63,7 @@ namespace LiteMonitor
         public void ToggleLayoutMode() => _bizHelper.ToggleLayoutMode();
         public void EnsureVisibleAndSavePos() => _bizHelper.SavePos();
         public void ApplyRoundedCorners() => _winHelper.ApplyRoundedCorners();
+        public void RefreshTopMost(bool forceReinsert = false) => _winHelper.RefreshTopMost(_cfg.TopMost, forceReinsert);
         
         // 供外部调用
         public void OpenTaskManager() => _bizHelper.OpenTaskManager();
@@ -205,6 +210,8 @@ namespace LiteMonitor
             
             // DPI / Resize
             this.Resize += (_, __) => _winHelper.ApplyRoundedCorners();
+            this.VisibleChanged += (_, __) => { if (Visible) _winHelper.RefreshTopMost(_cfg.TopMost, forceReinsert: true); };
+            this.HandleCreated += (_, __) => _winHelper.RefreshTopMost(_cfg.TopMost, forceReinsert: true);
         }
 
         public void ShowMainWindow()
@@ -216,6 +223,7 @@ namespace LiteMonitor
             _cfg.Save();
 
             _bizHelper.ForceShow();
+            _winHelper.RefreshTopMost(_cfg.TopMost, forceReinsert: true);
             _bizHelper.RebuildMenus();
         }
 
@@ -330,11 +338,7 @@ namespace LiteMonitor
                 this.BeginInvoke(new Action(async () =>
                 {
                     await Task.Delay(3000);
-                    // 1. 立即执行第一次置顶
-                    this.TopMost = false;
-                    await Task.Delay(1000);
-                    this.TopMost = true;
-                    this.BringToFront();
+                    _winHelper.RefreshTopMost(true, forceReinsert: true);
                 }));
             }
         }

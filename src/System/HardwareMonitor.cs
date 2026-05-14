@@ -37,6 +37,7 @@ namespace LiteMonitor.src.SystemServices
         
         // 状态标记 (防止并发重载)
         private volatile bool _isReloading = false;
+        private volatile bool _isOpening = false;
 
         // 计时器相关
         private long _tickCounter = 0;
@@ -114,7 +115,10 @@ namespace LiteMonitor.src.SystemServices
 
         #region Public Methods
 
-        public float? Get(string key) => _valueProvider.GetValue(key);
+        public float? Get(string key)
+        {
+            return _isOpening ? _valueProvider.GetStartupValue(key) : _valueProvider.GetValue(key);
+        }
 
         public string GetNetworkIP() => _networkManager.GetCurrentIP();
 
@@ -161,6 +165,8 @@ namespace LiteMonitor.src.SystemServices
 
         public void UpdateAll()
         {
+            if (_isOpening) return;
+
             // [Fix #290] 标记是否需要触发重载（因硬件变更或故障）
             bool needsReload = false;
 
@@ -171,6 +177,8 @@ namespace LiteMonitor.src.SystemServices
 
                 // 2. 计算更新需求
                 var requirements = CheckUpdateRequirements();
+
+                _valueProvider.OnUpdateTickStarted();
 
                 lock (_lock)
                 {
@@ -191,6 +199,8 @@ namespace LiteMonitor.src.SystemServices
                         // [Fix #290] 显卡防闪退保护：双显卡切换时 Update 可能抛出异常
                         if (IsGpu(hw) && requirements.NeedGpu) 
                         { 
+                            if (!requirements.ForceAll && !ShouldUpdateGpuHardware(hw)) continue;
+
                             try { hw.Update(); }
                             catch (Exception ex)
                             {
@@ -229,8 +239,6 @@ namespace LiteMonitor.src.SystemServices
                         }
                     }
                 }
-
-                _valueProvider.OnUpdateTickStarted();
                 
                 // 任务错峰执行 (调用 SystemOptimizer)
                 SystemOptimizer.RunMaintenanceTasks(_secondsCounter);
@@ -295,39 +303,50 @@ namespace LiteMonitor.src.SystemServices
         {
             Task.Run(async () =>
             {
+                _isOpening = true;
                 try
                 {
                     // ★★★ [新增] 启动计数器预热 (不阻塞主 UI) ★★★
                     _perfCounterManager.InitializeAsync();
-                    
-                    // 这句耗时 4-5 秒，但在执行过程中，硬件会陆续添加到 _computer.Hardware
-                    _computer.Open();
 
-                    // ★★★ T0+级修复：彻底禁用历史记录，解决 SensorValue[] 飙升 ★★★
-                    // 必须在 Open() 之后调用，此时传感器才被创建
-                    DisableSensorHistory();
-
-                    // 只有全部扫描完，才建立高速 Map
                     lock (_lock)
                     {
-                        // 1. 先进行一次全量更新 (预热)
-                        // 这一步至关重要！它确保了随后 Rebuild 时，SensorMap 能读到传感器的数值
-                        foreach (var hw in _computer.Hardware) hw.Update();
+                        // LHM 打开双 Nvidia 显卡时可能很慢。启动阶段 Get() 已改走性能计数器兜底，
+                        // 这里继续加锁只会让设置页等硬件树稳定，不会拖住 CPU/MEM/DISK 首屏数据。
+                        _computer.Open();
+                        WarmUpValueDependentSensors();
 
-                        // 2. 数据有了，再建立映射
+                        // 先建立映射，再由正常刷新循环更新数值，避免启动时预热所有 GPU 拖慢 CPU/MEM 展示。
                         _sensorMap.Rebuild(_computer, _cfg);
                         
-                        // ★★★ [新增] 3. 静态化预热：将所有传感器对象存入 Provider 缓存 ★★★
+                        // ★★★ [新增] 静态化预热：将所有传感器对象存入 Provider 缓存 ★★★
                         _valueProvider.PreCacheAllSensors(_sensorMap);
                     }
 
-                    // 优化 T1：启动后大扫除
-                    GC.Collect(2, GCCollectionMode.Forced, true, true);
-                    SystemOptimizer.TrimWorkingSet();
+                    _isOpening = false;
+
+                    // 首轮缓存就绪后再做历史记录禁用和内存整理，避免延后第一屏数据。
+                    _ = Task.Run(async () =>
+                    {
+                        await Task.Delay(3000);
+
+                        lock (_lock)
+                        {
+                            DisableSensorHistory();
+                        }
+
+                        // 优化 T1：启动后大扫除
+                        GC.Collect(2, GCCollectionMode.Forced, true, true);
+                        SystemOptimizer.TrimWorkingSet();
+                    });
                 }
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"Init Error: {ex.Message}");
+                }
+                finally
+                {
+                    _isOpening = false;
                 }
             });
         }
@@ -343,6 +362,26 @@ namespace LiteMonitor.src.SystemServices
             // 注意：MOBO.Temp 有些可能通过 WMI 读取，不一定需要 Controller，但为了保险起见，如果开了 MOBO 也开启
             // if (_cfg.IsAnyEnabled("MOBO")) return true; 
             return false;
+        }
+
+        private void WarmUpValueDependentSensors()
+        {
+            bool needMoboValue =
+                _cfg.IsAnyEnabled("MOBO") ||
+                _cfg.IsAnyEnabled("CPU.Fan") ||
+                _cfg.IsAnyEnabled("CPU.Pump") ||
+                _cfg.IsAnyEnabled("CASE.Fan");
+
+            if (!needMoboValue) return;
+
+            foreach (var hw in _computer.Hardware)
+            {
+                if (IsMoboOrCooler(hw))
+                {
+                    try { UpdateWithSubHardware(hw); }
+                    catch { }
+                }
+            }
         }
 
         private double UpdateTiming()
@@ -481,6 +520,15 @@ namespace LiteMonitor.src.SystemServices
                    hw.HardwareType == HardwareType.GpuIntel;
         }
 
+        private bool ShouldUpdateGpuHardware(IHardware hw)
+        {
+            var activeGpu = _sensorMap.CachedGpu;
+            if (activeGpu == null) return true;
+
+            // 当前面板只有一组 GPU 指标，刷新非当前显卡只会增加启动和轮询耗时。
+            return ReferenceEquals(hw, activeGpu);
+        }
+
         private static bool IsMoboOrCooler(IHardware hw)
         {
             return hw.HardwareType == HardwareType.Motherboard || 
@@ -496,6 +544,18 @@ namespace LiteMonitor.src.SystemServices
         public static List<string> ListAllNetworks() => HardwareScanner.ListAllNetworks(Instance!._computer);
 
         public static List<string> ListAllDisks() => HardwareScanner.ListAllDisks(Instance!._computer);
+
+        public static List<string> ListAllGpus()
+        {
+            lock (Instance!._lock)
+                return HardwareScanner.ListAllGpus(Instance!._computer);
+        }
+
+        public static List<HardwareScanner.GpuOption> ListAllGpuOptions()
+        {
+            lock (Instance!._lock)
+                return HardwareScanner.ListAllGpuOptions(Instance!._computer);
+        }
 
         public static List<string> ListAllFans() => HardwareScanner.ListAllFans(Instance!._computer, Instance!._lock);
 

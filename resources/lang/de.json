@@ -221,6 +221,7 @@
     "HardwareSettings": "Quelle",
     "DiskSource": "Disk",
     "NetworkSource": "Netz",
+    "GpuSource": "GPU",
     "Auto": "Auto",
     "UseWinPerCounters": "Sys Zähler",
     "UseWinPerCountersTip": "⚠️Deaktivieren bei Ungenauigkeit. CPU/GPU/RAM/DISK von Sensoren gelesen.",

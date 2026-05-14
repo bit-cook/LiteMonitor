@@ -100,10 +100,23 @@ namespace LiteMonitor.src.SystemServices
             // 但为了保持原代码结构，我们依然用candidates收集主板相关数据
             var candidatesMoboTemps = new List<ISensor>(capacity: 10); // 预设容量，减少扩容开销
 
+            string preferredGpu = cfg.PreferredGpu ?? "";
+            IHardware? selectedGpu = HardwareScanner.FindGpuByConfig(computer, preferredGpu);
+
             // 局部递归函数
             void RegisterTo(IHardware hw)
             {
                 //hw.Update();
+
+                bool isGpuHardware = HardwareScanner.IsGpuHardware(hw);
+
+                // 用户选择的显卡仍存在时只映射指定显卡；配置失效或旧名称无法唯一定位时回退自动优先级。
+                if (isGpuHardware &&
+                    selectedGpu != null &&
+                    !ReferenceEquals(hw, selectedGpu))
+                {
+                    return;
+                }
 
                 // --- 填充 CPU 缓存 (用于加权平均) ---
                 if (hw.HardwareType == HardwareType.Cpu)
@@ -131,9 +144,7 @@ namespace LiteMonitor.src.SystemServices
                 }
 
                 // --- 填充 GPU 缓存 (优化版：完全依赖优先级排序) ---
-                if (hw.HardwareType == HardwareType.GpuNvidia || 
-                    hw.HardwareType == HardwareType.GpuAmd || 
-                    hw.HardwareType == HardwareType.GpuIntel)
+                if (isGpuHardware)
                 {
                     // 因为外层循环已经按照 GetHwPriority 排序（强力显卡在前），
                     // 所以第一个遇到的显卡就是最强的，直接锁定即可。
@@ -260,9 +271,13 @@ namespace LiteMonitor.src.SystemServices
                 if (best != null) newMap["MOBO.Temp"] = best;
             }
 
-            // B. 风扇匹配 (调用全新智能算法)
-            // ★★★ 修改：委托给 FanMapper 专用类处理 ★★★
-            _fanMapper.ScanAndMapFans(computer, cfg, newMap);
+            // B. 风扇匹配只在确实显示风扇/水泵时运行，避免启动阶段无意义地刷新主板控制器。
+            if (cfg.IsAnyEnabled("CPU.Fan") ||
+                cfg.IsAnyEnabled("CPU.Pump") ||
+                cfg.IsAnyEnabled("CASE.Fan"))
+            {
+                _fanMapper.ScanAndMapFans(computer, cfg, newMap);
+            }
 
             // 2. 原子交换数据 (加锁)
             lock (_lock)

@@ -50,6 +50,47 @@ namespace LiteMonitor.src.UI.Helpers
             _form.Resize += (_, __) => ApplyRoundedCorners();
         }
 
+        public bool IsTopMostStyleApplied()
+        {
+            try
+            {
+                if (_form.IsDisposed || !_form.IsHandleCreated) return false;
+
+                int ex = GetWindowLong(_form.Handle, GWL_EXSTYLE);
+                return (ex & WS_EX_TOPMOST) != 0;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        public void RefreshTopMost(bool enabled, bool forceReinsert = false)
+        {
+            try
+            {
+                if (_form.IsDisposed || !_form.IsHandleCreated) return;
+
+                _form.TopMost = enabled;
+                uint flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER;
+
+                if (enabled)
+                {
+                    // 仅在明确恢复/用户操作时重插 Z 序，避免定时器频繁抢其它置顶窗口。
+                    if (forceReinsert)
+                    {
+                        SetWindowPos(_form.Handle, HWND_NOTOPMOST, 0, 0, 0, 0, flags);
+                    }
+                    SetWindowPos(_form.Handle, HWND_TOPMOST, 0, 0, 0, 0, flags);
+                }
+                else
+                {
+                    SetWindowPos(_form.Handle, HWND_NOTOPMOST, 0, 0, 0, 0, flags);
+                }
+            }
+            catch { }
+        }
+
         // =================================================================
         // 透明度渐变
         // =================================================================
@@ -152,16 +193,24 @@ namespace LiteMonitor.src.UI.Helpers
         [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref int attrValue, int attrSize);
         [DllImport("user32.dll", SetLastError = true)] private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
         [DllImport("user32.dll", SetLastError = true)] private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+        [DllImport("user32.dll", SetLastError = true)] private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint flags);
         [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] public static extern bool SetForegroundWindow(IntPtr hWnd);
         [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)] public static extern int RegisterWindowMessage(string lpString);
         [DllImport("user32.dll", SetLastError = true)] public static extern bool ChangeWindowMessageFilter(uint message, uint dwFlag);
 
         public const uint MSGFLT_ADD = 1;
+        private static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
+        private static readonly IntPtr HWND_NOTOPMOST = new IntPtr(-2);
+        private const uint SWP_NOSIZE = 0x0001;
+        private const uint SWP_NOMOVE = 0x0002;
+        private const uint SWP_NOACTIVATE = 0x0010;
+        private const uint SWP_NOOWNERZORDER = 0x0200;
         private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
         private const int DWMWCP_ROUND = 2;
         private const int DWMWA_BORDER_COLOR = 34;
         private const int DWMWA_COLOR_NONE = unchecked((int)0xFFFFFFFE);
         private const int GWL_EXSTYLE = -20;
+        private const int WS_EX_TOPMOST = 0x00000008;
         private const int WS_EX_TRANSPARENT = 0x20;
         private const int WS_EX_LAYERED = 0x80000;
 

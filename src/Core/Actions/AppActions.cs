@@ -19,7 +19,7 @@ namespace LiteMonitor.src.Core.Actions
     {
 
         // ★★★ 新增：全局应用入口 ★★★
-        public static void ApplyAllSettings(Settings cfg, MainForm mainForm, UIController ui)
+        public static void ApplyAllSettings(Settings cfg, MainForm mainForm, UIController ui, bool applyAutoStart = false)
         {
             // 0. [核心修复] 在任何逻辑执行前，记录当前的渲染模式
             // 防止 ApplyLanguage -> ApplyTheme 提前重置了 ui 的状态导致无法判断是否切换了模式
@@ -29,7 +29,8 @@ namespace LiteMonitor.src.Core.Actions
             ApplyLanguage(cfg, null, mainForm); 
 
             // 2. 系统级设置
-            ApplyAutoStart(cfg); // 原 SystemHardwarPage 的逻辑
+            // 开机启动会调用 schtasks 写计划任务，只能在开关变化时执行，避免每次应用设置都触发杀软拦截。
+            if (applyAutoStart) ApplyAutoStart(cfg);
             ApplyWindowAttributes(cfg, mainForm); // 基础窗口属性
 
             // 3. 界面布局与主题 (传入原始状态以判断是否需要居中)
@@ -85,6 +86,7 @@ namespace LiteMonitor.src.Core.Actions
         {
             // 置顶
             if (form.TopMost != cfg.TopMost) form.TopMost = cfg.TopMost;
+            form.RefreshTopMost(forceReinsert: true);
             
             // 鼠标穿透
             form.SetClickThrough(cfg.ClickThrough);

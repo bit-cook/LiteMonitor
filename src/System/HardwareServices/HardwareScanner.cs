@@ -13,7 +13,15 @@ namespace LiteMonitor.src.SystemServices
         private static List<string>? _cachedFanList = null;
         private static List<string>? _cachedNetworkList = null;
         private static List<string>? _cachedDiskList = null;
+        private static List<GpuOption>? _cachedGpuOptions = null;
         private static List<string>? _cachedMoboTempList = null;
+
+        public sealed class GpuOption
+        {
+            public string Label { get; set; } = "";
+            public string Value { get; set; } = "";
+            public string Name { get; set; } = "";
+        }
 
         /// <summary>
         /// 清除所有扫描缓存
@@ -23,6 +31,7 @@ namespace LiteMonitor.src.SystemServices
             _cachedFanList = null;
             _cachedNetworkList = null;
             _cachedDiskList = null;
+            _cachedGpuOptions = null;
             _cachedMoboTempList = null;
         }
 
@@ -71,6 +80,98 @@ namespace LiteMonitor.src.SystemServices
 
             if (list.Count > 0) _cachedDiskList = list;
             return list.ToList();
+        }
+
+        /// <summary>
+        /// 列出所有显卡名称，供旧调用点使用。
+        /// </summary>
+        public static List<string> ListAllGpus(IComputer computer)
+        {
+            return ListAllGpuOptions(computer).Select(x => x.Label).ToList();
+        }
+
+        /// <summary>
+        /// 列出所有显卡选项，Value 使用硬件 Identifier，避免同型号多显卡被合并。
+        /// </summary>
+        public static List<GpuOption> ListAllGpuOptions(IComputer computer)
+        {
+            if (_cachedGpuOptions != null && _cachedGpuOptions.Count > 0)
+                return CloneGpuOptions(_cachedGpuOptions);
+
+            var gpus = computer.Hardware.Where(IsGpuHardware).ToList();
+            var nameCounts = gpus
+                .GroupBy(h => h.Name, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
+            var nameIndexes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var list = new List<GpuOption>();
+
+            foreach (var gpu in gpus)
+            {
+                string name = gpu.Name ?? "";
+                nameIndexes.TryGetValue(name, out int currentIndex);
+                currentIndex++;
+                nameIndexes[name] = currentIndex;
+
+                bool duplicatedName = nameCounts.TryGetValue(name, out int count) && count > 1;
+                string label = duplicatedName ? $"{name} #{currentIndex}" : name;
+
+                list.Add(new GpuOption
+                {
+                    Label = label,
+                    Value = GetHardwareValue(gpu),
+                    Name = name
+                });
+            }
+
+            if (list.Count > 0) _cachedGpuOptions = CloneGpuOptions(list);
+            return CloneGpuOptions(list);
+        }
+
+        public static IHardware? FindGpuByConfig(IComputer computer, string configValue)
+        {
+            if (string.IsNullOrWhiteSpace(configValue)) return null;
+
+            var gpus = computer.Hardware.Where(IsGpuHardware).ToList();
+            var byIdentifier = gpus.FirstOrDefault(h =>
+                string.Equals(GetHardwareValue(h), configValue, StringComparison.OrdinalIgnoreCase));
+            if (byIdentifier != null) return byIdentifier;
+
+            // 兼容旧配置：旧版本保存的是显卡名。若同名多卡，旧值无法唯一定位，交给自动模式。
+            var byName = gpus.Where(h => string.Equals(h.Name, configValue, StringComparison.OrdinalIgnoreCase)).ToList();
+            return byName.Count == 1 ? byName[0] : null;
+        }
+
+        public static GpuOption? FindGpuOptionByConfig(IComputer computer, string configValue)
+        {
+            if (string.IsNullOrWhiteSpace(configValue)) return null;
+
+            var options = ListAllGpuOptions(computer);
+            var byValue = options.FirstOrDefault(o =>
+                string.Equals(o.Value, configValue, StringComparison.OrdinalIgnoreCase));
+            if (byValue != null) return byValue;
+
+            var byName = options.Where(o => string.Equals(o.Name, configValue, StringComparison.OrdinalIgnoreCase)).ToList();
+            return byName.Count == 1 ? byName[0] : null;
+        }
+
+        public static bool IsGpuHardware(IHardware hw)
+        {
+            return hw.HardwareType == HardwareType.GpuNvidia ||
+                   hw.HardwareType == HardwareType.GpuAmd ||
+                   hw.HardwareType == HardwareType.GpuIntel;
+        }
+
+        private static string GetHardwareValue(IHardware hardware)
+        {
+            string identifier = hardware.Identifier?.ToString() ?? "";
+            return string.IsNullOrWhiteSpace(identifier) ? (hardware.Name ?? "") : identifier;
+        }
+
+        private static List<GpuOption> CloneGpuOptions(List<GpuOption> source)
+        {
+            return source
+                .Select(x => new GpuOption { Label = x.Label, Value = x.Value, Name = x.Name })
+                .ToList();
         }
 
         /// <summary>
